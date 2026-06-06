@@ -173,11 +173,10 @@ const App: React.FC = () => {
   });
   const [activeTab, setActiveTab] = useState<'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer'>('balance');
   const [rows, setRows] = useState<ProjectionRow[]>([]);
-  const [metrics, setMetrics] = useState<{ m1: string; m2: string; m3: string; m4: string }>({
+  const [metrics, setMetrics] = useState<{ m1: string; m2: string; m3: string }>({
     m1: '—',
     m2: '—',
     m3: '—',
-    m4: '—',
   });
 
   // Save to localStorage whenever inputs change
@@ -204,14 +203,7 @@ const App: React.FC = () => {
     const peakRmd = projectionRows.reduce((mx, r) => (r.rmd > mx ? r.rmd : mx), 0);
     const m3 = peakRmd > 0 ? `${fmt(peakRmd)}/yr` : 'None';
 
-    const ssIdx = Math.min(inputs.ssAge - inputs.age, projectionRows.length - 1);
-    const ssRow = projectionRows[Math.max(ssIdx, retireIn)] || projectionRows[projectionRows.length - 1];
-    const totalIncome = (ssRow.tradW + ssRow.rothW + ssRow.taxableW + ssRow.hsaW + ssRow.ss + ssRow.spouseSs + ssRow.pension - ssRow.totalTax) / 12;
-    const inflExp = (inputs.expenses + inputs.healthcareExpenses + inputs.discretionaryExpenses) * Math.pow(1 + inputs.inf, Math.max(0, inputs.ssAge - inputs.age));
-    const gap = totalIncome - inflExp;
-    const m4 = (gap >= 0 ? '+' : '') + fmt(gap) + '/mo';
-
-    setMetrics({ m1, m2, m3, m4 });
+    setMetrics({ m1, m2, m3 });
   }, [inputs]);
 
   // Run optimizer (memoized, only recompute when inputs change)

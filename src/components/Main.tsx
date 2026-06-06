@@ -25,7 +25,7 @@ interface MainProps {
   activeTab: 'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer';
   setActiveTab: (tab: 'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer') => void;
   rows: ProjectionRow[];
-  metrics: { m1: string; m2: string; m3: string; m4: string };
+  metrics: { m1: string; m2: string; m3: string };
   optimization: import('../optimizer').OptimizationOutput | null;
   optTimestamp: number;
 }
@@ -296,16 +296,12 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
           <div className="mval">{metrics.m1}</div>
         </div>
         <div className="metric-card">
-          <div className="mlabel">Est. tax drag/yr</div>
+          <div className="mlabel">Avg tax/yr in retirement</div>
           <div className="mval">{metrics.m2}</div>
         </div>
         <div className="metric-card">
-          <div className="mlabel">Peak RMD (est.)</div>
+          <div className="mlabel">Peak RMD</div>
           <div className="mval">{metrics.m3}</div>
-        </div>
-        <div className="metric-card">
-          <div className="mlabel">Monthly gap at SS</div>
-          <div className="mval">{metrics.m4}</div>
         </div>
       </div>
 
