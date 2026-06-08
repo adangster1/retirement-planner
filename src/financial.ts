@@ -8,6 +8,14 @@ const RMD_FACTORS: Record<number, number> = {
   94: 9.5, 95: 8.9, 96: 8.4, 97: 7.8, 98: 7.3, 99: 6.8, 100: 6.4,
 };
 
+export function computeLoanPayoffMonths(balance: number, monthly: number, annualRate: number): number {
+  if (monthly <= 0 || balance <= 0) return 0;
+  if (annualRate <= 0) return Math.ceil(balance / monthly);
+  const r = annualRate / 12;
+  if (monthly <= balance * r) return Infinity;
+  return Math.ceil(-Math.log(1 - (balance * r) / monthly) / Math.log(1 + r));
+}
+
 export function rmdFactor(age: number): number | null {
   if (age < 73) return null;
   return RMD_FACTORS[Math.min(age, 100)] || 6.4;
@@ -273,6 +281,25 @@ export function spouseSsAt(params: InputParams, age: number): number {
   return monthly * 12 * Math.pow(1 + params.ssCOLA, spouseAgeThisYear - claimAge);
 }
 
+export function computeGuaranteedIncome(params: InputParams, age: number): number {
+  if (!params.accounts) return 0;
+  let total = 0;
+  for (const acct of params.accounts) {
+    if (acct.type !== 'annuity' && acct.type !== 'pension' && acct.type !== 'bond_tips') continue;
+    if (!acct.monthlyIncome) continue;
+    const startAge = acct.incomeStartAge ?? params.retireAge;
+    const endAge = acct.incomeEndAge ?? params.lifeExp;
+    if (age < startAge || age > endAge) continue;
+    let annual = acct.monthlyIncome * 12;
+    if (acct.inflationAdjusted) {
+      const rate = acct.inflationRate ?? params.inf;
+      annual *= Math.pow(1 + rate, age - startAge);
+    }
+    total += annual;
+  }
+  return Math.round(total);
+}
+
 /**
  * Run the core year-by-year projection with smart withdrawal ordering.
  * @param conversionSchedule - Optional per-year override: age -> forced conversion amount.
@@ -284,6 +311,21 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
   let taxable = params.taxableBal;
   let hsa = params.hsaBal;
   let basis = params.taxableBasis ?? params.taxableBal; // full basis = no embedded gains by default
+
+  // When accounts are defined, they override the flat sidebar balance/contribution fields
+  if (params.accounts && params.accounts.length > 0) {
+    const tradAccts = params.accounts.filter(a => a.type === 'traditional');
+    const rothAccts = params.accounts.filter(a => a.type === 'roth');
+    const taxAccts  = params.accounts.filter(a => a.type === 'taxable');
+    const hsaAccts  = params.accounts.filter(a => a.type === 'hsa');
+    if (tradAccts.length + rothAccts.length + taxAccts.length + hsaAccts.length > 0) {
+      trad    = tradAccts.reduce((s, a) => s + a.balance, 0);
+      roth    = rothAccts.reduce((s, a) => s + a.balance, 0);
+      taxable = taxAccts.reduce((s, a) => s + a.balance, 0);
+      basis   = taxAccts.reduce((s, a) => s + (a.costBasis ?? a.balance), 0);
+      hsa     = hsaAccts.reduce((s, a) => s + a.balance, 0);
+    }
+  }
 
   const retireIn = Math.max(1, params.retireAge - params.age);
   const totalYears = Math.max(
@@ -304,6 +346,7 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
     const inflFactor = taxInflFactor(params, age);
     const num65 = countEligible65(params, age);
     let rmd = 0, conv = 0, tradW = 0, rothW = 0, taxableW = 0, hsaW = 0;
+    let pensionInc = 0;
     let ssInc = 0, spouseSsInc = 0;
     let ssTaxable = 0, federalTax = 0, stateTax = 0;
     let irmaaPartB = 0, irmaaPartD = 0;
@@ -345,14 +388,36 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
 
     if (y < retireIn) {
       // Accumulation phase
-      const matchPct = params.employerMatch;
-      const matchLimit = (params.matchLimit / 100) * (params.tradContrib * 12);
-      const employerMatch = Math.min(matchLimit, trad * matchPct); // simplified
-      trad += params.tradContrib * 12 + (y > 0 ? Math.round(employerMatch) : 0);
-      roth += params.rothContrib * 12;
-      taxable += params.taxableContrib * 12;
-      basis += params.taxableContrib * 12; // contributions go in at par
-      hsa += params.hsaContrib * 12;
+      let tradContribAmt: number, rothContribAmt: number;
+      let taxableContribAmt: number, hsaContribAmt: number, employerMatchAmt: number;
+      if (params.accounts && params.accounts.length > 0) {
+        tradContribAmt    = params.accounts.filter(a => a.type === 'traditional').reduce((s, a) => s + (a.annualContrib ?? 0), 0);
+        rothContribAmt    = params.accounts.filter(a => a.type === 'roth').reduce((s, a) => s + (a.annualContrib ?? 0), 0);
+        taxableContribAmt = params.accounts.filter(a => a.type === 'taxable').reduce((s, a) => s + (a.annualContrib ?? 0), 0);
+        hsaContribAmt     = params.accounts.filter(a => a.type === 'hsa').reduce((s, a) => s + (a.annualContrib ?? 0), 0);
+        // Employer match: sum across traditional accounts
+        const salary = params.salary ?? 0;
+        employerMatchAmt = params.accounts
+          .filter(a => a.type === 'traditional' && a.employerMatch && a.annualContrib)
+          .reduce((s, a) => {
+            const matchOnContrib = (a.annualContrib ?? 0) * (a.employerMatch ?? 0);
+            const salaryCap = a.matchLimit ? (a.matchLimit / 100) * salary : matchOnContrib;
+            return s + Math.min(matchOnContrib, salaryCap > 0 ? salaryCap : matchOnContrib);
+          }, 0);
+      } else {
+        tradContribAmt    = params.tradContrib * 12;
+        rothContribAmt    = params.rothContrib * 12;
+        taxableContribAmt = params.taxableContrib * 12;
+        hsaContribAmt     = params.hsaContrib * 12;
+        const matchPct    = params.employerMatch;
+        const matchLimit  = (params.matchLimit / 100) * tradContribAmt;
+        employerMatchAmt  = Math.min(matchLimit, tradContribAmt * matchPct);
+      }
+      trad    += tradContribAmt + (y > 0 ? Math.round(employerMatchAmt) : 0);
+      roth    += rothContribAmt;
+      taxable += taxableContribAmt;
+      basis   += taxableContribAmt;
+      hsa     += hsaContribAmt;
 
       const annualSalary = params.salary ?? 0;
 
@@ -364,20 +429,20 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
         }
       }
 
-      // Pre-retirement Roth conversions (if convStart <= current age)
+      // Pre-retirement Roth conversions
       const convStart = params.convStart ?? params.retireAge;
-      if (trad > 0 && age >= convStart && age <= params.convUntil) {
-        if (conversionSchedule && conversionSchedule[age] !== undefined) {
-          conv = Math.max(0, Math.min(conversionSchedule[age], trad));
-        } else if (!conversionSchedule) {
-          // Salary fills bracket space — only remaining headroom is available for conversions
-          const headroom = bracketHeadroom(annualSalary, params.filingStatus, targetConvBracket, num65, inflFactor);
-          const maxConv = params.rothConv > 0
-            ? Math.min(params.rothConv, headroom, trad)
-            : Math.min(headroom, trad);
-          conv = Math.max(0, Math.floor(maxConv));
-        }
-        if (conv > 0) {
+      // Schedule overrides convStart/convUntil — honor whatever ages the schedule contains
+      if (conversionSchedule && conversionSchedule[age] !== undefined && trad > 0) {
+        conv = Math.max(0, Math.min(conversionSchedule[age], trad));
+      } else if (!conversionSchedule && trad > 0 && age >= convStart && age <= params.convUntil) {
+        // Auto-conversion: respect configured range, fill remaining salary headroom
+        const headroom = bracketHeadroom(annualSalary, params.filingStatus, targetConvBracket, num65, inflFactor);
+        const maxConv = params.rothConv > 0
+          ? Math.min(params.rothConv, headroom, trad)
+          : Math.min(headroom, trad);
+        conv = Math.max(0, Math.floor(maxConv));
+      }
+      if (conv > 0) {
           // Incremental conversion tax on top of salary (this portion is paid from taxable account)
           const taxWithConv = estimateTax(annualSalary + conv, params.filingStatus, num65, inflFactor);
           const convFed = Math.max(0, taxWithConv - federalTax);
@@ -391,21 +456,67 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
           trad -= conv;
           roth += conv;
           taxable = Math.max(0, taxable - convTaxCalc); // only conversion taxes drawn from taxable account
-        }
       }
 
       magi2YearsAgo = magi1YearAgo;
       magi1YearAgo = annualSalary + conv; // MAGI includes salary for IRMAA tracking
+
+      // One-time expenses during accumulation (paid from taxable)
+      if (params.expenseItems) {
+        for (const item of params.expenseItems) {
+          if (item.isOneTime && item.atAge === age) {
+            const yearsOut = age - params.age;
+            const infl = Math.pow(1 + params.expenseInflationRate, yearsOut);
+            taxable = Math.max(0, taxable - Math.round(item.monthly * infl));
+          }
+        }
+      }
     } else {
       // Distribution phase
-      yearExpense = Math.round(baseExpense * Math.pow(1 + params.expenseInflationRate, ry));
-      yearHcExpense = Math.round(baseHcExpense * Math.pow(1 + params.healthcareInflationRate, ry));
-      yearDiscExpense = Math.round(baseDiscExpense * Math.pow(1 + params.inf, ry));
-      yearLtcExpense = Math.round(baseLtcExpense * Math.pow(1 + params.healthcareInflationRate, ry));
+      if (params.expenseItems && params.expenseItems.length > 0) {
+        const yearsOut = age - params.age;
+        for (const item of params.expenseItems) {
+          if (item.isOneTime) continue;
+          const itemStart = item.startAge ?? params.age;
+          let itemEnd = item.endAge ?? params.lifeExp;
+          if (item.isLoan && item.loanBalance && item.loanRate !== undefined && item.monthly > 0) {
+            const months = computeLoanPayoffMonths(item.loanBalance, item.monthly, item.loanRate);
+            if (isFinite(months)) itemEnd = Math.min(itemEnd, Math.floor(params.age + months / 12));
+          }
+          if (age < itemStart || age > itemEnd) continue;
+          let infl = 1;
+          if (item.inflationType === 'general') infl = Math.pow(1 + params.expenseInflationRate, yearsOut);
+          else if (item.inflationType === 'healthcare') infl = Math.pow(1 + params.healthcareInflationRate, yearsOut);
+          else if (item.inflationType === 'cpi') infl = Math.pow(1 + params.inf, yearsOut);
+          const annual = item.monthly * 12 * infl;
+          if (item.category === 'healthcare') yearHcExpense += annual;
+          else if (item.category === 'discretionary') yearDiscExpense += annual;
+          else yearExpense += annual;
+        }
+        yearExpense = Math.round(yearExpense);
+        yearHcExpense = Math.round(yearHcExpense);
+        yearDiscExpense = Math.round(yearDiscExpense);
+        yearLtcExpense = Math.round(baseLtcExpense * Math.pow(1 + params.healthcareInflationRate, ry));
+      } else {
+        yearExpense = Math.round(baseExpense * Math.pow(1 + params.expenseInflationRate, ry));
+        yearHcExpense = Math.round(baseHcExpense * Math.pow(1 + params.healthcareInflationRate, ry));
+        yearDiscExpense = Math.round(baseDiscExpense * Math.pow(1 + params.inf, ry));
+        yearLtcExpense = Math.round(baseLtcExpense * Math.pow(1 + params.healthcareInflationRate, ry));
+      }
+      // Add one-time expenses this year
+      if (params.expenseItems) {
+        for (const item of params.expenseItems) {
+          if (item.isOneTime && item.atAge === age) {
+            const yearsOut = age - params.age;
+            yearExpense += Math.round(item.monthly * Math.pow(1 + params.expenseInflationRate, yearsOut));
+          }
+        }
+      }
       const totalSpending = yearExpense + yearHcExpense + yearDiscExpense + yearLtcExpense;
 
       ssInc = ssAt(params, age);
       spouseSsInc = spouseSsAt(params, age);
+      pensionInc = computeGuaranteedIncome(params, age);
 
       // Step 1: Calculate RMD (mandatory)
       const factor = rmdFactor(age);
@@ -428,12 +539,12 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
         }
       }
 
-      // Recalculate SS taxable portion with RMD + conversion
-      const otherIncome = rmd + conv;
+      // Recalculate SS taxable portion with RMD + conversion + pension
+      const otherIncome = rmd + conv + pensionInc;
       ssTaxable = taxableSSPortion(ssInc + spouseSsInc, otherIncome, params.filingStatus);
 
       // Total ordinary income for tax calculation
-      const totalOrdinary = rmd + conv + ssTaxable;
+      const totalOrdinary = rmd + conv + ssTaxable + pensionInc;
 
       // Federal tax (inflation-adjusted brackets)
       federalTax = estimateTax(totalOrdinary, params.filingStatus, num65, inflFactor);
@@ -447,8 +558,8 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
 
       // Incremental tax attributable to the conversion
       if (conv > 0) {
-        const ssTaxableNoConv = taxableSSPortion(ssInc + spouseSsInc, rmd, params.filingStatus);
-        const incomeNoConv = rmd + ssTaxableNoConv;
+        const ssTaxableNoConv = taxableSSPortion(ssInc + spouseSsInc, rmd + pensionInc, params.filingStatus);
+        const incomeNoConv = rmd + ssTaxableNoConv + pensionInc;
         const fedNoConv = estimateTax(incomeNoConv, params.filingStatus, num65, inflFactor);
         const stateNoConv = params.includeStateTax && params.stateTaxRate > 0
           ? Math.round(incomeNoConv * params.stateTaxRate) : 0;
@@ -464,9 +575,9 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
 
       // MAGI tracking updated later after LTCG is known
 
-      // Step 3: Determine spending need after SS and taxes
+      // Step 3: Determine spending need after SS, pension, and taxes
       const totalSS = ssInc + spouseSsInc;
-      const needed = totalSpending + totalTax + irmaaPartB + irmaaPartD - totalSS;
+      const needed = totalSpending + totalTax + irmaaPartB + irmaaPartD - totalSS - pensionInc;
 
       // Step 4: WITHDRAWAL ORDER (smart):
       // a) Use RMD for spending (already distributed)
@@ -520,7 +631,7 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
 
       // Update MAGI tracking (include LTCG in MAGI for next year's IRMAA)
       magi2YearsAgo = magi1YearAgo;
-      magi1YearAgo = rmd + conv + ssTaxable + ltcgAmount;
+      magi1YearAgo = rmd + conv + ssTaxable + ltcgAmount + pensionInc;
 
       // Update balances
       trad = Math.max(0, trad - rmd - conv - tradW);
@@ -533,9 +644,9 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
 
     const portfolioValue = trad + roth + taxable + hsa;
     const salaryInRow = age < params.retireAge ? (params.salary ?? 0) : 0;
-    const ordinaryForTax = rmd + conv + ssTaxable + salaryInRow;
+    const ordinaryForTax = rmd + conv + ssTaxable + salaryInRow + pensionInc;
     const mRate = marginalRate(ordinaryForTax, params.filingStatus, num65, inflFactor);
-    const grossIncome = rmd + conv + ssInc + spouseSsInc + ltcgAmount + salaryInRow;
+    const grossIncome = rmd + conv + ssInc + spouseSsInc + ltcgAmount + salaryInRow + pensionInc;
     const ltcgTaxFinal = (age >= params.retireAge) ? (() => {
       // Re-derive ltcgTax for eRate calculation — already computed in distribution block
       // We need it in scope; use the value already captured in the closure via ltcgAmount
@@ -563,13 +674,13 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
       hsaW: Math.round(hsaW),
       ss: Math.round(ssInc),
       spouseSs: Math.round(spouseSsInc),
-      pension: 0,
-      ordinaryIncome: Math.round(rmd + conv + ssTaxable + salaryInRow),
+      pension: Math.round(pensionInc),
+      ordinaryIncome: Math.round(rmd + conv + ssTaxable + salaryInRow + pensionInc),
       qualifiedDividends: 0,
       ltcg: Math.round(ltcgAmount),
       ssTaxable: Math.round(ssTaxable),
       standardDeduction: Math.round((STD_DEDUCTION[params.filingStatus] + num65 * ADDITIONAL_STD_65[params.filingStatus]) * inflFactor),
-      taxableIncome: Math.round(Math.max(0, rmd + conv + ssTaxable + salaryInRow - (STD_DEDUCTION[params.filingStatus] + num65 * ADDITIONAL_STD_65[params.filingStatus]) * inflFactor)),
+      taxableIncome: Math.round(Math.max(0, rmd + conv + ssTaxable + salaryInRow + pensionInc - (STD_DEDUCTION[params.filingStatus] + num65 * ADDITIONAL_STD_65[params.filingStatus]) * inflFactor)),
       federalTax,
       stateTax,
       totalTax: federalTax + stateTax + irmaaPartB + irmaaPartD + ltcgTaxFinal,

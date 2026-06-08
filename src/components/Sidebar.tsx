@@ -289,69 +289,6 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
 
       <hr className="divider" />
 
-      {/* Accounts */}
-      <div>
-        <div className="section-label">Accounts</div>
-        <div className="two-col">
-          <div className="field">
-            <TipLabel text="Traditional ($)" />
-            <input type="number" value={inputs.tradBal} step={5000}
-              onInput={(e) => handleNumberChange('tradBal', e)} />
-          </div>
-          <div className="field">
-            <TipLabel text="Roth ($)" />
-            <input type="number" value={inputs.rothBal} step={5000}
-              onInput={(e) => handleNumberChange('rothBal', e)} />
-          </div>
-        </div>
-        <div className="two-col">
-          <div className="field">
-            <TipLabel text="Taxable ($)" />
-            <input type="number" value={inputs.taxableBal} step={5000}
-              onInput={(e) => handleNumberChange('taxableBal', e)} />
-          </div>
-          <div className="field">
-            <TipLabel text="HSA ($)" />
-            <input type="number" value={inputs.hsaBal} step={1000}
-              onInput={(e) => handleNumberChange('hsaBal', e)} />
-          </div>
-        </div>
-        <div className="field">
-          <TipLabel text="Taxable cost basis ($)" />
-          <input type="number" value={inputs.taxableBasis ?? ''} step={5000}
-            placeholder={`${inputs.taxableBal} (no gains)`}
-            onInput={(e) => {
-              const v = Number((e.target as HTMLInputElement).value);
-              onInputChange('taxableBasis', v || undefined as any);
-            }} />
-        </div>
-        <div className="field">
-          <TipLabel text="Monthly contributions" />
-          <div className="two-col">
-            <input type="number" value={inputs.tradContrib} step={100}
-              placeholder="Traditional"
-              onInput={(e) => handleNumberChange('tradContrib', e)} />
-            <input type="number" value={inputs.rothContrib} step={100}
-              placeholder="Roth"
-              onInput={(e) => handleNumberChange('rothContrib', e)} />
-          </div>
-        </div>
-        <div className="two-col">
-          <div className="field">
-            <TipLabel text="Taxable contrib ($/mo)" />
-            <input type="number" value={inputs.taxableContrib} step={100}
-              onInput={(e) => handleNumberChange('taxableContrib', e)} />
-          </div>
-          <div className="field">
-            <TipLabel text="HSA contrib ($/mo)" />
-            <input type="number" value={inputs.hsaContrib} step={50}
-              onInput={(e) => handleNumberChange('hsaContrib', e)} />
-          </div>
-        </div>
-      </div>
-
-      <hr className="divider" />
-
       {/* Social Security */}
       <div>
         <div className="section-label">Social Security</div>
@@ -484,51 +421,6 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
 
       <hr className="divider" />
 
-      {/* Spending */}
-      <div>
-        <div className="section-label">Spending</div>
-        <div className="field">
-          <TipLabel text="Base monthly expenses ($)" />
-          <input type="number" value={inputs.expenses} step={100}
-            onInput={(e) => handleNumberChange('expenses', e)} />
-        </div>
-        <div className="two-col">
-          <div className="field">
-            <TipLabel text="Healthcare ($/mo)" />
-            <input type="number" value={inputs.healthcareExpenses} step={50}
-              onInput={(e) => handleNumberChange('healthcareExpenses', e)} />
-          </div>
-          <div className="field">
-            <TipLabel text="Discretionary ($/mo)" />
-            <input type="number" value={inputs.discretionaryExpenses} step={50}
-              onInput={(e) => handleNumberChange('discretionaryExpenses', e)} />
-          </div>
-        </div>
-        <div className="field">
-          <TipLabel text="LTC reserve ($/mo, from age 80)" />
-          <input type="number" value={inputs.ltcExpenses} step={100}
-            onInput={(e) => handleNumberChange('ltcExpenses', e)} />
-        </div>
-        <div className="field">
-          <TipLabel text="Expense inflation (%)" />
-          <div className="range-row">
-            <input type="range" min={1} max={6} value={inputs.expenseInflationRate * 100} step={0.25}
-              onInput={(e) => handleRateChange('expenseInflationRate', e)} />
-            <span className="range-val">{(inputs.expenseInflationRate * 100).toFixed(2)}%</span>
-          </div>
-        </div>
-        <div className="field">
-          <TipLabel text="Healthcare inflation (%)" />
-          <div className="range-row">
-            <input type="range" min={2} max={10} value={inputs.healthcareInflationRate * 100} step={0.5}
-              onInput={(e) => handleRateChange('healthcareInflationRate', e)} />
-            <span className="range-val">{(inputs.healthcareInflationRate * 100).toFixed(1)}%</span>
-          </div>
-        </div>
-      </div>
-
-      <hr className="divider" />
-
       {/* Roth conversions */}
       <div>
         <div className="section-label">Roth conversions</div>
@@ -610,36 +502,6 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
         )}
       </div>
 
-      <hr className="divider" />
-
-      {/* Assumptions */}
-      <div>
-        <div className="section-label">Assumptions</div>
-        <div className="field">
-          <TipLabel text="Annual return (%)" />
-          <div className="range-row">
-            <input type="range" min={1} max={12} value={inputs.r * 100} step={0.5}
-              onInput={(e) => handleRateChange('r', e)} />
-            <span className="range-val">{(inputs.r * 100).toFixed(1)}%</span>
-          </div>
-        </div>
-        <div className="field">
-          <TipLabel text="Taxable account return (%)" />
-          <div className="range-row">
-            <input type="range" min={1} max={12} value={inputs.taxableReturn * 100} step={0.5}
-              onInput={(e) => handleRateChange('taxableReturn', e)} />
-            <span className="range-val">{(inputs.taxableReturn * 100).toFixed(1)}%</span>
-          </div>
-        </div>
-        <div className="field">
-          <TipLabel text="Inflation (%)" />
-          <div className="range-row">
-            <input type="range" min={1} max={6} value={inputs.inf * 100} step={0.5}
-              onInput={(e) => handleRateChange('inf', e)} />
-            <span className="range-val">{(inputs.inf * 100).toFixed(1)}%</span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };

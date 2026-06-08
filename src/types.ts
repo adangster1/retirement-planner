@@ -67,6 +67,49 @@ export interface InputParams {
   includeIRMAA: boolean;
   includeStateTax: boolean;
   ssCOLA: number; // Social Security cost of living adjustment
+
+  // Detailed expense items (optional; if present, replaces sidebar spending fields in projection)
+  expenseItems?: ExpenseItem[];
+
+  // Detailed accounts (optional; if present, overrides sidebar balance/contribution fields)
+  accounts?: Account[];
+}
+
+export type AccountType = 'traditional' | 'roth' | 'taxable' | 'hsa' | 'annuity' | 'pension' | 'bond_tips';
+
+export interface Account {
+  id: string;
+  name: string;
+  type: AccountType;
+  balance: number;
+  costBasis?: number;        // taxable accounts only
+  annualContrib?: number;    // pre-retirement annual contribution
+  employerMatch?: number;    // decimal e.g. 0.04 = 4% match rate
+  matchLimit?: number;       // % of salary ceiling e.g. 6 = 6% of salary
+  // Guaranteed income fields (annuity, pension, bond_tips)
+  monthlyIncome?: number;    // in today's dollars at incomeStartAge
+  incomeStartAge?: number;   // default: params.retireAge
+  incomeEndAge?: number;     // default: params.lifeExp (undefined = for life)
+  inflationAdjusted?: boolean;
+  inflationRate?: number;    // default: params.inf
+}
+
+export type ExpenseCategory = 'housing' | 'transport' | 'food' | 'healthcare' | 'insurance' | 'loan' | 'discretionary' | 'other';
+export type ExpenseInflationType = 'general' | 'healthcare' | 'fixed' | 'cpi';
+
+export interface ExpenseItem {
+  id: string;
+  name: string;
+  category: ExpenseCategory;
+  monthly: number;           // in today's dollars
+  inflationType: ExpenseInflationType;
+  startAge?: number;         // default = params.age
+  endAge?: number;           // default = params.lifeExp; auto-computed for loans
+  isLoan?: boolean;
+  loanBalance?: number;      // remaining principal
+  loanRate?: number;         // annual e.g. 0.065
+  isOneTime?: boolean;
+  atAge?: number;
 }
 
 export interface ProjectionRow {

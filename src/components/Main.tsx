@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import type { InputParams, ProjectionRow } from '../types';
+import type { InputParams, ProjectionRow, Account } from '../types';
+import { ExpenseTab } from './ExpenseTab';
+import { AccountsTab } from './AccountsTab';
 import { Chart as ChartJS, type ChartData, type ChartOptions } from 'chart.js';
 import {
   CategoryScale,
@@ -22,8 +24,8 @@ ChartJS.register(
 
 interface MainProps {
   inputs: InputParams;
-  activeTab: 'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer';
-  setActiveTab: (tab: 'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer') => void;
+  activeTab: 'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer' | 'expenses' | 'accounts';
+  setActiveTab: (tab: 'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer' | 'expenses' | 'accounts') => void;
   rows: ProjectionRow[];
   metrics: { m1: string; m2: string; m3: string; m4: string; m5: string };
   optimization: import('../optimizer').OptimizationOutput | null;
@@ -31,6 +33,11 @@ interface MainProps {
   conversionSchedule: Record<number, number> | null;
   onApplySchedule: (schedule: Record<number, number>) => void;
   onClearSchedule: () => void;
+  onInputChange: (field: keyof InputParams, value: string | number | boolean) => void;
+  onExpenseItemsChange: (items: import('../types').ExpenseItem[]) => void;
+  onAccountsChange: (accounts: Account[]) => void;
+  optMinStartAge: number;
+  setOptMinStartAge: (age: number) => void;
 }
 
 const fmt = (n: number): string => {
@@ -45,7 +52,7 @@ const pct = (n: number): string => (n * 100).toFixed(1) + '%';
 
 type OptimizerGoal = 'tax' | 'portfolio' | 'peakrate' | 'greedy';
 
-const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metrics, optimization, optTimestamp, conversionSchedule, onApplySchedule, onClearSchedule }) => {
+const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metrics, optimization, optTimestamp, conversionSchedule, onApplySchedule, onClearSchedule, onInputChange, onExpenseItemsChange, onAccountsChange, optMinStartAge, setOptMinStartAge }) => {
   const [optimizerGoal, setOptimizerGoal] = useState<OptimizerGoal>('tax');
   const retireIn = Math.max(1, inputs.retireAge - inputs.age);
   const allRows = rows.slice(1); // all years from current age onward (skip y=0 initial state)
@@ -76,6 +83,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
       { label: 'HSA withdrawal', data: allRows.map(r => r.hsaW), backgroundColor: '#F39C12', stack: 'income', type: 'bar' as const },
       { label: 'SS (primary)', data: allRows.map(r => r.ss), backgroundColor: '#9FE1CB', stack: 'income', type: 'bar' as const },
       { label: 'SS (spouse)', data: allRows.map(r => r.spouseSs), backgroundColor: '#76D7C4', stack: 'income', type: 'bar' as const },
+      { label: 'Pension/Annuity', data: allRows.map(r => r.pension), backgroundColor: '#8E44AD', stack: 'income', type: 'bar' as const },
       { label: 'Taxes', data: allRows.map(r => -r.totalTax), backgroundColor: '#F09595', stack: 'tax', type: 'bar' as const },
       { label: 'Expenses', data: allRows.map(r => r.totalSpending), type: 'line' as const, borderColor: '#D85A30', backgroundColor: 'transparent', pointRadius: 0, tension: 0.3, borderWidth: 2, order: 0 },
     ] as any,
@@ -91,14 +99,20 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
   });
 
   // ----- Tax Chart (marginal + effective rate) -----
-  const taxData = (): ChartData<'line', number[], string> => ({
+  const taxRateData = (): ChartData<'line', number[], string> => ({
     labels: allRows.map(r => String(r.age)),
     datasets: [
       { label: 'Marginal rate', data: allRows.map(r => r.marginalRate * 100), borderColor: '#E74C3C', backgroundColor: 'rgba(231,76,60,0.08)', fill: true, pointRadius: 0, tension: 0.3, borderWidth: 2 },
       { label: 'Effective rate', data: allRows.map(r => r.effectiveRate * 100), borderColor: '#3498DB', backgroundColor: 'rgba(52,152,219,0.08)', fill: true, pointRadius: 0, tension: 0.3, borderWidth: 2 },
-      { label: 'Federal tax', data: allRows.map(r => r.federalTax), borderColor: '#E67E22', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, borderWidth: 1.5, yAxisID: 'yTax' },
-      { label: 'State tax', data: allRows.map(r => r.stateTax), borderColor: '#F39C12', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, borderWidth: 1.5, yAxisID: 'yTax' },
-      { label: 'IRMAA (B+D)', data: allRows.map(r => r.irmaaPartB + r.irmaaPartD), borderColor: '#8E44AD', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, borderWidth: 1.5, borderDash: [3, 3], yAxisID: 'yTax' },
+    ],
+  });
+
+  const taxDollarData = (): ChartData<'line', number[], string> => ({
+    labels: allRows.map(r => String(r.age)),
+    datasets: [
+      { label: 'Federal tax', data: allRows.map(r => r.federalTax), borderColor: '#E67E22', backgroundColor: 'rgba(230,126,34,0.07)', fill: true, pointRadius: 0, tension: 0.3, borderWidth: 2 },
+      { label: 'State tax', data: allRows.map(r => r.stateTax), borderColor: '#27AE60', backgroundColor: 'rgba(39,174,96,0.07)', fill: true, pointRadius: 0, tension: 0.3, borderWidth: 2 },
+      { label: 'IRMAA (B+D)', data: allRows.map(r => r.irmaaPartB + r.irmaaPartD), borderColor: '#8E44AD', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, borderWidth: 2, borderDash: [4, 3] },
     ],
   });
 
@@ -106,7 +120,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
   const cashflowData = (): ChartData<'bar', number[], string> => ({
     labels: allRows.map(r => String(r.age)),
     datasets: [
-      { label: 'Total income', data: allRows.map(r => getSalary(r) + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW + r.ss + r.spouseSs), backgroundColor: '#27AE60', stack: 'cf', type: 'bar' as const },
+      { label: 'Total income', data: allRows.map(r => getSalary(r) + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW + r.ss + r.spouseSs + r.pension), backgroundColor: '#27AE60', stack: 'cf', type: 'bar' as const },
       { label: 'Total spending', data: allRows.map(r => -r.totalSpending), backgroundColor: '#E74C3C', stack: 'cf', type: 'bar' as const },
       { label: 'Total tax', data: allRows.map(r => -r.totalTax), backgroundColor: '#F09595', stack: 'cf', type: 'bar' as const },
     ] as any,
@@ -115,46 +129,50 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
   // Monte Carlo is computed inline in the tab render to keep all data in one place.
 
   // ----- Chart Options -----
-  const baseOpts = (stacked = false, yMin?: number, yMax?: number, y2 = false): ChartOptions<'bar' | 'line'> => {
-    const opts: any = {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: (ctx: any) => {
-              let l = ctx.dataset.label || '';
-              if (l) l += ': ';
-              if (ctx.dataset.yAxisID === 'yTax') {
-                l += fmt(ctx.parsed.y);
-              } else if (activeTab === 'tax' && ctx.datasetIndex < 2) {
-                l += ctx.parsed.y.toFixed(1) + '%';
-              } else if (activeTab === 'mc') {
-                l += ctx.parsed.y + '%';
-              } else {
-                l += fmt(ctx.parsed.y);
-              }
-              return l;
-            },
+  const rateOpts = (): ChartOptions<'line'> => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx: any) => `${ctx.dataset.label || ''}: ${ctx.parsed.y.toFixed(1)}%`,
+        },
+      },
+    },
+    scales: {
+      x: { ticks: { maxTicksLimit: 10, font: { size: 11 } }, grid: { display: false } },
+      y: { min: 0, ticks: { callback: (v: number | string) => Number(v).toFixed(0) + '%', font: { size: 11 }, maxTicksLimit: 5 }, grid: { color: 'rgba(128,128,128,0.1)' } },
+    },
+  } as any);
+
+  const baseOpts = (stacked = false, yMin?: number, yMax?: number): ChartOptions<'bar' | 'line'> => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx: any) => {
+            let l = ctx.dataset.label || '';
+            if (l) l += ': ';
+            if (activeTab === 'mc') {
+              l += ctx.parsed.y + '%';
+            } else {
+              l += fmt(ctx.parsed.y);
+            }
+            return l;
           },
         },
       },
-      scales: {
-        x: { stacked, ticks: { maxTicksLimit: 10, font: { size: 11 } }, grid: { display: false } },
-        y: { stacked, min: yMin, max: yMax, ticks: { callback: (v: number | string) => fmt(Number(v)), font: { size: 11 }, maxTicksLimit: 5 }, grid: { color: 'rgba(128,128,128,0.1)' } },
-      },
-    };
-    if (y2) {
-      opts.scales.yTax = {
-        position: 'right',
-        ticks: { callback: (v: number | string) => fmt(Number(v)), font: { size: 10 }, maxTicksLimit: 5 },
-        grid: { display: false },
-      };
-    }
-    return opts;
-  };
+    },
+    scales: {
+      x: { stacked, ticks: { maxTicksLimit: 10, font: { size: 11 } }, grid: { display: false } },
+      y: { stacked, min: yMin, max: yMax, ticks: { callback: (v: number | string) => fmt(Number(v)), font: { size: 11 }, maxTicksLimit: 5 }, grid: { color: 'rgba(128,128,128,0.1)' } },
+    },
+  } as any);
 
   // ----- RMD/SS interaction detail panel -----
   const renderRMDDetail = () => {
@@ -286,15 +304,42 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
     );
   };
 
-  const tabs = [
-    { key: 'balance' as const, label: 'Balances' },
-    { key: 'income' as const, label: 'Income' },
-    { key: 'rmd' as const, label: 'RMDs & Conversions' },
-    { key: 'tax' as const, label: 'Tax Analysis' },
-    { key: 'cashflow' as const, label: 'Cash Flow' },
-    { key: 'optimizer' as const, label: 'Roth Optimizer' },
-    { key: 'mc' as const, label: 'Monte Carlo' },
+  const accountsConfigured = (inputs.accounts?.length ?? 0) > 0;
+  const expensesConfigured = (inputs.expenseItems?.length ?? 0) > 0;
+
+  type TabDef = { key: typeof activeTab; label: string; category: 'setup' | 'results' | 'tool'; configured?: boolean };
+  const tabs: TabDef[] = [
+    { key: 'accounts', label: 'Accounts', category: 'setup', configured: accountsConfigured },
+    { key: 'expenses', label: 'Expenses', category: 'setup', configured: expensesConfigured },
+    { key: 'balance', label: 'Balances', category: 'results' },
+    { key: 'income', label: 'Income', category: 'results' },
+    { key: 'rmd', label: 'RMDs & Conversions', category: 'results' },
+    { key: 'tax', label: 'Tax Analysis', category: 'results' },
+    { key: 'cashflow', label: 'Cash Flow', category: 'results' },
+    { key: 'optimizer', label: 'Roth Optimizer', category: 'tool' },
+    { key: 'mc', label: 'Monte Carlo', category: 'tool' },
   ];
+
+  const tabStyle = (t: TabDef): React.CSSProperties => {
+    const isActive = activeTab === t.key;
+    if (t.category === 'setup') {
+      const configured = t.configured ?? false;
+      const fg = configured ? '#1A7A4A' : '#C0392B';
+      const bg = configured ? '#EAFAF1' : '#FDEDEC';
+      const border = configured ? 'rgba(26,122,74,0.5)' : 'rgba(192,57,43,0.5)';
+      return isActive
+        ? { background: bg, color: fg, borderColor: border }
+        : { color: fg, borderColor: border };
+    }
+    if (t.category === 'results') {
+      return isActive
+        ? { background: '#EBF5FB', color: '#1A5276', borderColor: 'rgba(36,113,163,0.5)' }
+        : {};
+    }
+    return isActive
+      ? { background: '#E8FAF8', color: '#0B6E5A', borderColor: 'rgba(11,110,90,0.5)' }
+      : {};
+  };
 
   return (
     <div className="main">
@@ -322,11 +367,23 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
       </div>
 
       <div className="tabs">
-        {tabs.map(t => (
-          <button key={t.key} className={`tab ${activeTab === t.key ? 'active' : ''}`} onClick={() => setActiveTab(t.key)}>
-            {t.label}
-          </button>
-        ))}
+        {tabs.map((t, i) => {
+          const prevCat = i > 0 ? tabs[i - 1].category : null;
+          return (
+            <React.Fragment key={t.key}>
+              {prevCat && prevCat !== t.category && (
+                <div style={{ width: '2px', background: 'rgba(0,0,0,0.25)', margin: '2px 6px', alignSelf: 'stretch', borderRadius: '1px' }} />
+              )}
+              <button
+                className={`tab ${activeTab === t.key ? 'active' : ''}`}
+                style={tabStyle(t)}
+                onClick={() => setActiveTab(t.key)}
+              >
+                {t.label}
+              </button>
+            </React.Fragment>
+          );
+        })}
       </div>
 
       {activeTab === 'balance' && (
@@ -397,6 +454,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
             <span className="li"><span className="ls" style={{ background: '#F39C12' }}></span>HSA withdrawal</span>
             <span className="li"><span className="ls" style={{ background: '#9FE1CB' }}></span>SS (primary)</span>
             <span className="li"><span className="ls" style={{ background: '#76D7C4' }}></span>SS (spouse)</span>
+            <span className="li"><span className="ls" style={{ background: '#8E44AD' }}></span>Pension/Annuity</span>
             <span className="li"><span className="ls" style={{ background: '#F09595' }}></span>Taxes</span>
             <span className="li"><span className="ls" style={{ background: '#D85A30', height: '3px', borderRadius: 0, width: '14px' }}></span>Expenses</span>
           </div>
@@ -413,6 +471,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                   <th>Age</th>
                   <th>Salary</th>
                   <th>Social Security</th>
+                  <th>Pension/Annuity</th>
                   <th>RMD</th>
                   <th>Roth Conversion</th>
                   <th>Traditional IRA</th>
@@ -429,7 +488,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
               <tbody>
                 {allRows.map(r => {
                   const salary = getSalary(r);
-                  const totalIn = salary + r.ss + r.spouseSs + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW;
+                  const totalIn = salary + r.ss + r.spouseSs + r.pension + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW;
                   const net = totalIn - r.totalSpending - r.totalTax;
                   const netSpendable = totalIn - r.conv - r.totalSpending - (r.totalTax - r.convTax);
                   return (
@@ -437,6 +496,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                       <td>{r.age}</td>
                       <td>{salary > 0 ? fmt(salary) : '—'}</td>
                       <td>{r.ss + r.spouseSs > 0 ? fmt(r.ss + r.spouseSs) : '—'}</td>
+                      <td>{r.pension > 0 ? fmt(r.pension) : '—'}</td>
                       <td>{r.rmd > 0 ? fmt(r.rmd) : '—'}</td>
                       <td>{r.conv > 0 ? fmt(r.conv) : '—'}</td>
                       <td>{r.tradW > 0 ? fmt(r.tradW) : '—'}</td>
@@ -482,15 +542,24 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
       {activeTab === 'tax' && (
         <div className="chart-card">
           <div className="chart-title">Tax analysis over retirement</div>
+
+          <div className="chart-subtitle" style={{ marginTop: '0.25rem' }}>Tax rates</div>
           <div className="legend">
             <span className="li"><span className="ls" style={{ background: '#E74C3C' }}></span>Marginal rate</span>
             <span className="li"><span className="ls" style={{ background: '#3498DB' }}></span>Effective rate</span>
+          </div>
+          <div style={{ position: 'relative', width: '100%', height: '180px' }}>
+            <Line data={taxRateData()} options={rateOpts()} />
+          </div>
+
+          <div className="chart-subtitle" style={{ marginTop: '1rem' }}>Tax amounts</div>
+          <div className="legend">
             <span className="li"><span className="ls" style={{ background: '#E67E22' }}></span>Federal tax</span>
-            <span className="li"><span className="ls" style={{ background: '#F39C12' }}></span>State tax</span>
+            <span className="li"><span className="ls" style={{ background: '#27AE60' }}></span>State tax</span>
             <span className="li"><span className="ls" style={{ background: '#8E44AD', height: '3px', borderRadius: 0, width: '14px' }}></span>IRMAA (B+D)</span>
           </div>
-          <div style={{ position: 'relative', width: '100%', height: '280px' }}>
-            <Line data={taxData()} options={baseOpts(false, undefined, undefined, true)} />
+          <div style={{ position: 'relative', width: '100%', height: '180px' }}>
+            <Line data={taxDollarData()} options={baseOpts()} />
           </div>
           <div className="detail-panel">
             <div className="detail-grid">
@@ -639,7 +708,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
               </thead>
               <tbody>
                 {allRows.map(r => {
-                  const totalIn = getSalary(r) + r.ss + r.spouseSs + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW;
+                  const totalIn = getSalary(r) + r.ss + r.spouseSs + r.pension + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW;
                   const totalOut = r.totalSpending + r.totalTax;
                   const net = totalIn - totalOut;
                   const depleted = r.total <= 0;
@@ -670,6 +739,14 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
             Net cash flow near zero is expected — the model draws exactly what is needed each year.
           </div>
         </div>
+      )}
+
+      {activeTab === 'expenses' && (
+        <ExpenseTab inputs={inputs} onItemsChange={onExpenseItemsChange} onInputChange={onInputChange} />
+      )}
+
+      {activeTab === 'accounts' && (
+        <AccountsTab inputs={inputs} onAccountsChange={onAccountsChange} onInputChange={onInputChange} />
       )}
 
       {activeTab === 'optimizer' && (
@@ -727,7 +804,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
             return (
               <>
                 {/* Goal selector */}
-                <div style={{ display: 'flex', gap: '4px', margin: '0 0 1rem 0', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '4px', margin: '0 0 0.5rem 0', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '11px', color: '#666', alignSelf: 'center', marginRight: '4px' }}>Optimize for:</span>
                   {GOAL_OPTIONS.map(opt => (
                     <button
@@ -748,6 +825,21 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                       {opt.label}
                     </button>
                   ))}
+                </div>
+
+                {/* Earliest start age slider */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '0 0 1rem 0' }}>
+                  <span style={{ fontSize: '11px', color: '#666', whiteSpace: 'nowrap' }}>Earliest start age:</span>
+                  <input
+                    type="range"
+                    min={inputs.age}
+                    max={71}
+                    value={optMinStartAge}
+                    step={1}
+                    style={{ flex: 1, maxWidth: '220px' }}
+                    onChange={e => setOptMinStartAge(Number(e.target.value))}
+                  />
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#1A5276', minWidth: '28px' }}>{optMinStartAge}</span>
                 </div>
 
                 {/* Recommendation banner */}
@@ -808,65 +900,103 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                 </div>
 
                 {/* Start age analysis */}
-                {optimization.startAgeAnalysis.length > 0 && (
-                  <>
-                    <div className="chart-subtitle" style={{ marginTop: '1.5rem' }}>Conversion start age analysis</div>
-                    <div className="note" style={{ marginBottom: '0.5rem' }}>
-                      Each row shows the best possible outcome (lowest lifetime tax across all 4 brackets) if you begin conversions at that age and continue through 72. Rows stop when later starts are no longer beneficial.
-                    </div>
-                    <div className="optimizer-table-wrap">
-                      <table className="optimizer-table opt-schedule-table">
-                        <thead>
-                          <tr>
-                            <th>Start Age</th>
-                            <th>Best Bracket</th>
-                            <th>Lifetime Tax</th>
-                            <th>Tax Savings vs None</th>
-                            <th>Peak Marginal</th>
-                            <th>Terminal Portfolio</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {optimization.startAgeAnalysis.map(row => {
-                            const isCurrentStart = row.convStart === (inputs.convStart ?? inputs.retireAge);
-                            const isBestStart = row === optimization.startAgeAnalysis.reduce((best, r) => r.savings > best.savings ? r : best, optimization.startAgeAnalysis[0]);
-                            const isApplied = conversionSchedule && JSON.stringify(conversionSchedule) === JSON.stringify(row.schedule);
-                            return (
-                              <tr key={row.convStart}
-                                className={isBestStart ? 'opt-row-best' : isCurrentStart ? 'opt-row-current' : ''}
-                              >
-                                <td>
-                                  {isBestStart && <span className="opt-badge-best">BEST</span>}
-                                  {isCurrentStart && !isBestStart && <span className="opt-badge-current">YOU</span>}
-                                  {' '}{row.convStart}
-                                </td>
-                                <td>{['10%', '12%', '22%', '24%'][row.bracket]}</td>
-                                <td>{fmt(row.lifetimeTotalTax)}</td>
-                                <td style={{ color: row.savings > 0 ? '#1D9E75' : '#C0392B', fontWeight: 600 }}>
-                                  {row.savings > 0 ? '+' : ''}{fmt(row.savings)}
-                                </td>
-                                <td>{pct(row.peakMarginalRate)}</td>
-                                <td>{fmt(row.terminalTotal)}</td>
-                                <td>
-                                  {isApplied ? (
-                                    <button onClick={onClearSchedule} style={{ fontSize: '10px', padding: '2px 6px', background: '#E74C3C', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
-                                      Reset
-                                    </button>
-                                  ) : Object.keys(row.schedule).length > 0 ? (
-                                    <button onClick={() => onApplySchedule(row.schedule)} style={{ fontSize: '10px', padding: '2px 6px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
-                                      Apply
-                                    </button>
-                                  ) : null}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
+                {optimization.startAgeAnalysis.length > 0 && (() => {
+                  const BRACKET_LABELS = ['10%', '12%', '22%', '24%'];
+                  const metricLabel = (m: import('../optimizer').StartAgeMetric) =>
+                    `${BRACKET_LABELS[m.bracket]} / until ${m.untilAge}`;
+                  const visibleRows = optimization.startAgeAnalysis.filter(r => r.convStart >= optMinStartAge);
+                  const bestRowForGoal = visibleRows.length === 0 ? null : visibleRows.reduce((best, r) => {
+                    if (optimizerGoal === 'portfolio') return r.bestTerminal.terminalTotal > best.bestTerminal.terminalTotal ? r : best;
+                    if (optimizerGoal === 'peakrate') return r.bestPeak.peakMarginalRate < best.bestPeak.peakMarginalRate ? r : best;
+                    return r.bestTax.lifetimeTotalTax < best.bestTax.lifetimeTotalTax ? r : best;
+                  }, visibleRows[0]);
+
+                  const goalSchedule = (row: typeof visibleRows[0]) =>
+                    optimizerGoal === 'portfolio' ? row.bestTerminal.schedule
+                    : optimizerGoal === 'peakrate' ? row.bestPeak.schedule
+                    : row.bestTax.schedule;
+
+                  return (
+                    <>
+                      <div className="chart-subtitle" style={{ marginTop: '1.5rem' }}>Conversion start age analysis</div>
+                      <div className="note" style={{ marginBottom: '0.5rem' }}>
+                        Each row tests all 4 brackets × 4 until-ages (16 combos) and shows the independently optimized best for each metric. Apply uses the schedule matching your current goal.
+                      </div>
+                      <div className="optimizer-table-wrap">
+                        <table className="optimizer-table opt-schedule-table">
+                          <thead>
+                            <tr>
+                              <th>Start Age</th>
+                              <th>Best Lifetime Tax</th>
+                              <th>Tax Savings</th>
+                              <th>Best Terminal</th>
+                              <th>Best Peak Rate</th>
+                              <th>Lowest IRMAA</th>
+                              <th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {visibleRows.map(row => {
+                              const isCurrentStart = row.convStart === (inputs.convStart ?? inputs.retireAge);
+                              const isBest = row === bestRowForGoal;
+                              const sched = goalSchedule(row);
+                              const activeMetric = optimizerGoal === 'portfolio' ? row.bestTerminal
+                                : optimizerGoal === 'peakrate' ? row.bestPeak
+                                : row.bestTax;
+                              const isApplied = conversionSchedule && JSON.stringify(conversionSchedule) === JSON.stringify(sched);
+                              const preRet = row.convStart < inputs.retireAge;
+                              // Show Apply when: schedule is non-empty AND (post-retirement OR the active metric has actual pre-retirement conversions)
+                              const canApply = Object.keys(sched).length > 0 && (!preRet || activeMetric.hasPreRetirementConv);
+                              const cell = (m: import('../optimizer').StartAgeMetric, content: React.ReactNode) =>
+                                preRet && !m.hasPreRetirementConv
+                                  ? <td style={{ color: '#bbb' }}>—</td>
+                                  : <td>{content}</td>;
+                              return (
+                                <tr key={row.convStart} className={isBest ? 'opt-row-best' : isCurrentStart ? 'opt-row-current' : ''}>
+                                  <td>
+                                    {isBest && <span className="opt-badge-best">BEST</span>}
+                                    {isCurrentStart && !isBest && <span className="opt-badge-current">YOU</span>}
+                                    {' '}{row.convStart}
+                                  </td>
+                                  {cell(row.bestTax, <>
+                                    {fmt(row.bestTax.lifetimeTotalTax)}
+                                    <div style={{ fontSize: '10px', color: '#888', marginTop: '1px' }}>{metricLabel(row.bestTax)}</div>
+                                  </>)}
+                                  {cell(row.bestTax, <span style={{ color: row.bestTax.savings > 0 ? '#1D9E75' : '#C0392B', fontWeight: 600 }}>
+                                    {row.bestTax.savings > 0 ? '+' : ''}{fmt(row.bestTax.savings)}
+                                  </span>)}
+                                  {cell(row.bestTerminal, <>
+                                    {fmt(row.bestTerminal.terminalTotal)}
+                                    <div style={{ fontSize: '10px', color: '#888', marginTop: '1px' }}>{metricLabel(row.bestTerminal)}</div>
+                                  </>)}
+                                  {cell(row.bestPeak, <>
+                                    {pct(row.bestPeak.peakMarginalRate)}
+                                    <div style={{ fontSize: '10px', color: '#888', marginTop: '1px' }}>{metricLabel(row.bestPeak)}</div>
+                                  </>)}
+                                  {cell(row.bestIrmaa, <>
+                                    {fmt(row.bestIrmaa.lifetimeIRMAA)}
+                                    <div style={{ fontSize: '10px', color: '#888', marginTop: '1px' }}>{metricLabel(row.bestIrmaa)}</div>
+                                  </>)}
+                                  <td>
+                                    {isApplied ? (
+                                      <button onClick={onClearSchedule} style={{ fontSize: '10px', padding: '2px 6px', background: '#E74C3C', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
+                                        Reset
+                                      </button>
+                                    ) : canApply ? (
+                                      <button onClick={() => onApplySchedule(sched)} style={{ fontSize: '10px', padding: '2px 6px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
+                                        Apply
+                                      </button>
+                                    ) : null}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {/* Comparison chart — metric adapts to goal */}
                 <div className="chart-subtitle">{chartMetric.label} by strategy</div>

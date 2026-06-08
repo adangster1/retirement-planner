@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { InputParams, ProjectionRow } from './types';
+import type { InputParams, ProjectionRow, Account } from './types';
 import { runProjection, fmt, ssInterpolate } from './financial';
 import { runOptimizer } from './optimizer';
 import type { OptimizationOutput } from './optimizer';
@@ -77,6 +77,9 @@ const DEFAULTS: InputParams = {
   includeIRMAA: true,
   includeStateTax: false,
   ssCOLA: 0.025,
+
+  expenseItems: undefined,
+  accounts: undefined,
 };
 
 function loadFromStorage(): InputParams {
@@ -176,7 +179,7 @@ const App: React.FC = () => {
     if (fromURL) return fromURL;
     return loadFromStorage();
   });
-  const [activeTab, setActiveTab] = useState<'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer'>('balance');
+  const [activeTab, setActiveTab] = useState<'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer' | 'expenses' | 'accounts'>('balance');
   const [conversionSchedule, setConversionSchedule] = useState<Record<number, number> | null>(null);
   const [rows, setRows] = useState<ProjectionRow[]>([]);
   const [metrics, setMetrics] = useState<{ m1: string; m2: string; m3: string; m4: string; m5: string }>({
@@ -234,14 +237,16 @@ const App: React.FC = () => {
     setMetrics({ m1, m2, m3, m4, m5 });
   }, [inputs, conversionSchedule]);
 
-  // Run optimizer (memoized, only recompute when inputs change)
+  const [optMinStartAge, setOptMinStartAge] = useState(() => inputs.age);
+
+  // Run optimizer (memoized, only recompute when inputs or min start age change)
   const optimization: OptimizationOutput | null = useMemo(() => {
     try {
-      return runOptimizer(inputs);
+      return runOptimizer(inputs, optMinStartAge);
     } catch {
       return null;
     }
-  }, [inputs]);
+  }, [inputs, optMinStartAge]);
 
   // Timestamp so Optimizer tab can show it re-ran
   const [optTimestamp, setOptTimestamp] = useState(Date.now());
@@ -265,6 +270,14 @@ const App: React.FC = () => {
       }
       return next;
     });
+  };
+
+  const handleExpenseItemsChange = (items: import('./types').ExpenseItem[]) => {
+    setInputs(prev => ({ ...prev, expenseItems: items.length > 0 ? items : undefined }));
+  };
+
+  const handleAccountsChange = (accounts: Account[]) => {
+    setInputs(prev => ({ ...prev, accounts: accounts.length > 0 ? accounts : undefined }));
   };
 
   const handleExport = () => exportToFile(inputs);
@@ -322,6 +335,11 @@ const App: React.FC = () => {
         conversionSchedule={conversionSchedule}
         onApplySchedule={setConversionSchedule}
         onClearSchedule={() => setConversionSchedule(null)}
+        onInputChange={handleInputChange}
+        onExpenseItemsChange={handleExpenseItemsChange}
+        onAccountsChange={handleAccountsChange}
+        optMinStartAge={optMinStartAge}
+        setOptMinStartAge={setOptMinStartAge}
       />
     </div>
   );
