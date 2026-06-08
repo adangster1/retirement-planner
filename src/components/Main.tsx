@@ -25,7 +25,7 @@ interface MainProps {
   activeTab: 'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer';
   setActiveTab: (tab: 'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer') => void;
   rows: ProjectionRow[];
-  metrics: { m1: string; m2: string; m3: string };
+  metrics: { m1: string; m2: string; m3: string; m4: string; m5: string };
   optimization: import('../optimizer').OptimizationOutput | null;
   optTimestamp: number;
   conversionSchedule: Record<number, number> | null;
@@ -43,12 +43,13 @@ const fmt = (n: number): string => {
 
 const pct = (n: number): string => (n * 100).toFixed(1) + '%';
 
-type OptimizerGoal = 'tax' | 'portfolio' | 'peakrate';
+type OptimizerGoal = 'tax' | 'portfolio' | 'peakrate' | 'greedy';
 
 const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metrics, optimization, optTimestamp, conversionSchedule, onApplySchedule, onClearSchedule }) => {
   const [optimizerGoal, setOptimizerGoal] = useState<OptimizerGoal>('tax');
   const retireIn = Math.max(1, inputs.retireAge - inputs.age);
-  const retRows = rows.slice(retireIn);
+  const allRows = rows.slice(1); // all years from current age onward (skip y=0 initial state)
+  const getSalary = (r: ProjectionRow) => r.age < inputs.retireAge ? (inputs.salary ?? 0) : 0;
 
   // ----- Balance Chart -----
   const balanceData = (): ChartData<'line', number[], string> => ({
@@ -64,49 +65,50 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
 
   // ----- Income Chart (stacked bar) -----
   const incomeData = (): ChartData<'bar', number[], string> => ({
-    labels: retRows.map(r => String(r.age)),
+    labels: allRows.map(r => String(r.age)),
     datasets: [
-      { label: 'RMD', data: retRows.map(r => r.rmd), backgroundColor: '#BA7517', stack: 'income', type: 'bar' as const },
-      { label: 'Conversion', data: retRows.map(r => r.conv), backgroundColor: '#378ADD', stack: 'income', type: 'bar' as const },
-      { label: 'Traditional IRA withdrawal', data: retRows.map(r => r.tradW), backgroundColor: '#5DADE2', stack: 'income', type: 'bar' as const },
-      { label: 'Roth IRA withdrawal', data: retRows.map(r => r.rothW), backgroundColor: '#1D9E75', stack: 'income', type: 'bar' as const },
-      { label: 'Taxable account withdrawal', data: retRows.map(r => r.taxableW), backgroundColor: '#9B59B6', stack: 'income', type: 'bar' as const },
-      { label: 'HSA withdrawal', data: retRows.map(r => r.hsaW), backgroundColor: '#F39C12', stack: 'income', type: 'bar' as const },
-      { label: 'SS (primary)', data: retRows.map(r => r.ss), backgroundColor: '#9FE1CB', stack: 'income', type: 'bar' as const },
-      { label: 'SS (spouse)', data: retRows.map(r => r.spouseSs), backgroundColor: '#76D7C4', stack: 'income', type: 'bar' as const },
-      { label: 'Taxes', data: retRows.map(r => -r.totalTax), backgroundColor: '#F09595', stack: 'tax', type: 'bar' as const },
-      { label: 'Expenses', data: retRows.map(r => r.totalSpending), type: 'line' as const, borderColor: '#D85A30', backgroundColor: 'transparent', pointRadius: 0, tension: 0.3, borderWidth: 2, order: 0 },
+      { label: 'Salary', data: allRows.map(r => getSalary(r)), backgroundColor: '#2ECC71', stack: 'income', type: 'bar' as const },
+      { label: 'RMD', data: allRows.map(r => r.rmd), backgroundColor: '#BA7517', stack: 'income', type: 'bar' as const },
+      { label: 'Conversion', data: allRows.map(r => r.conv), backgroundColor: '#378ADD', stack: 'income', type: 'bar' as const },
+      { label: 'Traditional IRA withdrawal', data: allRows.map(r => r.tradW), backgroundColor: '#5DADE2', stack: 'income', type: 'bar' as const },
+      { label: 'Roth IRA withdrawal', data: allRows.map(r => r.rothW), backgroundColor: '#1D9E75', stack: 'income', type: 'bar' as const },
+      { label: 'Taxable account withdrawal', data: allRows.map(r => r.taxableW), backgroundColor: '#9B59B6', stack: 'income', type: 'bar' as const },
+      { label: 'HSA withdrawal', data: allRows.map(r => r.hsaW), backgroundColor: '#F39C12', stack: 'income', type: 'bar' as const },
+      { label: 'SS (primary)', data: allRows.map(r => r.ss), backgroundColor: '#9FE1CB', stack: 'income', type: 'bar' as const },
+      { label: 'SS (spouse)', data: allRows.map(r => r.spouseSs), backgroundColor: '#76D7C4', stack: 'income', type: 'bar' as const },
+      { label: 'Taxes', data: allRows.map(r => -r.totalTax), backgroundColor: '#F09595', stack: 'tax', type: 'bar' as const },
+      { label: 'Expenses', data: allRows.map(r => r.totalSpending), type: 'line' as const, borderColor: '#D85A30', backgroundColor: 'transparent', pointRadius: 0, tension: 0.3, borderWidth: 2, order: 0 },
     ] as any,
   });
 
   // ----- RMD Chart -----
   const rmdData = (): ChartData<'bar', number[], string> => ({
-    labels: retRows.map(r => String(r.age)),
+    labels: allRows.map(r => String(r.age)),
     datasets: [
-      { label: 'RMD required', data: retRows.map(r => r.rmd), backgroundColor: '#BA7517', stack: 'a', type: 'bar' },
-      { label: 'Roth conversion', data: retRows.map(r => r.conv), backgroundColor: '#378ADD', stack: 'a', type: 'bar' },
+      { label: 'RMD required', data: allRows.map(r => r.rmd), backgroundColor: '#BA7517', stack: 'a', type: 'bar' },
+      { label: 'Roth conversion', data: allRows.map(r => r.conv), backgroundColor: '#378ADD', stack: 'a', type: 'bar' },
     ],
   });
 
   // ----- Tax Chart (marginal + effective rate) -----
   const taxData = (): ChartData<'line', number[], string> => ({
-    labels: retRows.map(r => String(r.age)),
+    labels: allRows.map(r => String(r.age)),
     datasets: [
-      { label: 'Marginal rate', data: retRows.map(r => r.marginalRate * 100), borderColor: '#E74C3C', backgroundColor: 'rgba(231,76,60,0.08)', fill: true, pointRadius: 0, tension: 0.3, borderWidth: 2 },
-      { label: 'Effective rate', data: retRows.map(r => r.effectiveRate * 100), borderColor: '#3498DB', backgroundColor: 'rgba(52,152,219,0.08)', fill: true, pointRadius: 0, tension: 0.3, borderWidth: 2 },
-      { label: 'Federal tax', data: retRows.map(r => r.federalTax), borderColor: '#E67E22', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, borderWidth: 1.5, yAxisID: 'yTax' },
-      { label: 'State tax', data: retRows.map(r => r.stateTax), borderColor: '#F39C12', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, borderWidth: 1.5, yAxisID: 'yTax' },
-      { label: 'IRMAA (B+D)', data: retRows.map(r => r.irmaaPartB + r.irmaaPartD), borderColor: '#8E44AD', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, borderWidth: 1.5, borderDash: [3, 3], yAxisID: 'yTax' },
+      { label: 'Marginal rate', data: allRows.map(r => r.marginalRate * 100), borderColor: '#E74C3C', backgroundColor: 'rgba(231,76,60,0.08)', fill: true, pointRadius: 0, tension: 0.3, borderWidth: 2 },
+      { label: 'Effective rate', data: allRows.map(r => r.effectiveRate * 100), borderColor: '#3498DB', backgroundColor: 'rgba(52,152,219,0.08)', fill: true, pointRadius: 0, tension: 0.3, borderWidth: 2 },
+      { label: 'Federal tax', data: allRows.map(r => r.federalTax), borderColor: '#E67E22', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, borderWidth: 1.5, yAxisID: 'yTax' },
+      { label: 'State tax', data: allRows.map(r => r.stateTax), borderColor: '#F39C12', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, borderWidth: 1.5, yAxisID: 'yTax' },
+      { label: 'IRMAA (B+D)', data: allRows.map(r => r.irmaaPartB + r.irmaaPartD), borderColor: '#8E44AD', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, borderWidth: 1.5, borderDash: [3, 3], yAxisID: 'yTax' },
     ],
   });
 
   // ----- Cashflow Chart -----
   const cashflowData = (): ChartData<'bar', number[], string> => ({
-    labels: retRows.map(r => String(r.age)),
+    labels: allRows.map(r => String(r.age)),
     datasets: [
-      { label: 'Total income', data: retRows.map(r => r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW + r.ss + r.spouseSs), backgroundColor: '#27AE60', stack: 'cf', type: 'bar' as const },
-      { label: 'Total spending', data: retRows.map(r => -r.totalSpending), backgroundColor: '#E74C3C', stack: 'cf', type: 'bar' as const },
-      { label: 'Total tax', data: retRows.map(r => -r.totalTax), backgroundColor: '#F09595', stack: 'cf', type: 'bar' as const },
+      { label: 'Total income', data: allRows.map(r => getSalary(r) + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW + r.ss + r.spouseSs), backgroundColor: '#27AE60', stack: 'cf', type: 'bar' as const },
+      { label: 'Total spending', data: allRows.map(r => -r.totalSpending), backgroundColor: '#E74C3C', stack: 'cf', type: 'bar' as const },
+      { label: 'Total tax', data: allRows.map(r => -r.totalTax), backgroundColor: '#F09595', stack: 'cf', type: 'bar' as const },
     ] as any,
   });
 
@@ -156,7 +158,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
 
   // ----- RMD/SS interaction detail panel -----
   const renderRMDDetail = () => {
-    const rmdRows = retRows.filter(r => r.rmd > 0 || r.conv > 0 || r.ss > 0);
+    const rmdRows = allRows.filter(r => r.rmd > 0 || r.conv > 0 || r.ss > 0);
     if (rmdRows.length === 0) return <div className="note">No RMD/SS data yet for this scenario.</div>;
 
     const firstRmd = rmdRows.find(r => r.rmd > 0);
@@ -216,7 +218,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
         </div>
 
         {(() => {
-          const convRows = retRows.filter(r => r.conv > 0);
+          const convRows = allRows.filter(r => r.conv > 0);
           if (convRows.length === 0) return null;
 
           const totalConvTax = convRows.reduce((s, r) => s + r.convTax, 0);
@@ -302,12 +304,20 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
           <div className="mval">{metrics.m1}</div>
         </div>
         <div className="metric-card">
-          <div className="mlabel">Avg tax/yr in retirement</div>
+          <div className="mlabel">Net worth at longevity</div>
+          <div className="mval">{metrics.m4}</div>
+        </div>
+        <div className="metric-card">
+          <div className="mlabel">Lifetime taxes</div>
           <div className="mval">{metrics.m2}</div>
         </div>
         <div className="metric-card">
           <div className="mlabel">Peak RMD</div>
           <div className="mval">{metrics.m3}</div>
+        </div>
+        <div className="metric-card">
+          <div className="mlabel">MC success rate</div>
+          <div className="mval">{metrics.m5}</div>
         </div>
       </div>
 
@@ -378,6 +388,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
         <div className="chart-card">
           <div className="chart-title">Annual income sources vs expenses</div>
           <div className="legend">
+            <span className="li"><span className="ls" style={{ background: '#2ECC71' }}></span>Salary</span>
             <span className="li"><span className="ls" style={{ background: '#BA7517' }}></span>RMD</span>
             <span className="li"><span className="ls" style={{ background: '#378ADD' }}></span>Conversion</span>
             <span className="li"><span className="ls" style={{ background: '#5DADE2' }}></span>Traditional IRA withdrawal</span>
@@ -400,6 +411,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
               <thead>
                 <tr>
                   <th>Age</th>
+                  <th>Salary</th>
                   <th>Social Security</th>
                   <th>RMD</th>
                   <th>Roth Conversion</th>
@@ -415,13 +427,15 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                 </tr>
               </thead>
               <tbody>
-                {retRows.map(r => {
-                  const totalIn = r.ss + r.spouseSs + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW;
+                {allRows.map(r => {
+                  const salary = getSalary(r);
+                  const totalIn = salary + r.ss + r.spouseSs + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW;
                   const net = totalIn - r.totalSpending - r.totalTax;
                   const netSpendable = totalIn - r.conv - r.totalSpending - (r.totalTax - r.convTax);
                   return (
                     <tr key={r.age} style={netSpendable < -2000 ? { background: '#FFF5F5' } : undefined}>
                       <td>{r.age}</td>
+                      <td>{salary > 0 ? fmt(salary) : '—'}</td>
                       <td>{r.ss + r.spouseSs > 0 ? fmt(r.ss + r.spouseSs) : '—'}</td>
                       <td>{r.rmd > 0 ? fmt(r.rmd) : '—'}</td>
                       <td>{r.conv > 0 ? fmt(r.conv) : '—'}</td>
@@ -482,33 +496,33 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
             <div className="detail-grid">
               <div className="detail-item detail-highlight">
                 <div className="detail-label">Lifetime total tax</div>
-                <div className="detail-value">{fmt(retRows.reduce((s, r) => s + r.totalTax, 0))}</div>
+                <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.totalTax, 0))}</div>
               </div>
               <div className="detail-item">
                 <div className="detail-label">Federal tax</div>
-                <div className="detail-value">{fmt(retRows.reduce((s, r) => s + r.federalTax, 0))}</div>
+                <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.federalTax, 0))}</div>
               </div>
               <div className="detail-item">
                 <div className="detail-label">State tax</div>
-                <div className="detail-value">{fmt(retRows.reduce((s, r) => s + r.stateTax, 0))}</div>
+                <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.stateTax, 0))}</div>
               </div>
               <div className="detail-item">
                 <div className="detail-label">IRMAA (Part B + D)</div>
-                <div className="detail-value">{fmt(retRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0))}</div>
+                <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0))}</div>
               </div>
               <div className="detail-item">
-                <div className="detail-label">Avg marginal rate (retirement)</div>
-                <div className="detail-value">{pct(retRows.reduce((s, r) => s + r.marginalRate, 0) / Math.max(1, retRows.length))}</div>
+                <div className="detail-label">Avg marginal rate</div>
+                <div className="detail-value">{pct(allRows.reduce((s, r) => s + r.marginalRate, 0) / Math.max(1, allRows.length))}</div>
               </div>
               <div className="detail-item">
                 <div className="detail-label">Peak marginal rate</div>
-                <div className="detail-value">{pct(Math.max(...retRows.map(r => r.marginalRate)))}</div>
+                <div className="detail-value">{pct(Math.max(...allRows.map(r => r.marginalRate)))}</div>
               </div>
               <div className="detail-item">
                 <div className="detail-label">Avg taxable SS %</div>
                 <div className="detail-value">
                   {(() => {
-                    const withSS = retRows.filter(r => r.ss > 0);
+                    const withSS = allRows.filter(r => r.ss > 0);
                     if (withSS.length === 0) return 'N/A';
                     return pct(withSS.reduce((s, r) => s + r.ssTaxable / Math.max(1, r.ss + r.spouseSs), 0) / withSS.length);
                   })()}
@@ -535,7 +549,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                 </tr>
               </thead>
               <tbody>
-                {retRows.map(r => (
+                {allRows.map(r => (
                   <tr key={r.age}>
                     <td>{r.age}</td>
                     <td>{fmt(r.ordinaryIncome)}</td>
@@ -556,10 +570,10 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                   <td>—</td>
                   <td>—</td>
                   <td>—</td>
-                  <td>{fmt(retRows.reduce((s, r) => s + r.federalTax, 0))}</td>
-                  <td>{fmt(retRows.reduce((s, r) => s + r.stateTax, 0))}</td>
-                  <td>{fmt(retRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0))}</td>
-                  <td>{fmt(retRows.reduce((s, r) => s + r.totalTax, 0))}</td>
+                  <td>{fmt(allRows.reduce((s, r) => s + r.federalTax, 0))}</td>
+                  <td>{fmt(allRows.reduce((s, r) => s + r.stateTax, 0))}</td>
+                  <td>{fmt(allRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0))}</td>
+                  <td>{fmt(allRows.reduce((s, r) => s + r.totalTax, 0))}</td>
                   <td>—</td>
                   <td>—</td>
                 </tr>
@@ -590,19 +604,19 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                 <div className="detail-label">Portfolio depletion age</div>
                 <div className="detail-value">
                   {(() => {
-                    const depleted = retRows.find(r => r.total <= 0);
+                    const depleted = allRows.find(r => r.total <= 0);
                     return depleted ? depleted.age : 'Never (funded)';
                   })()}
                 </div>
               </div>
               <div className="detail-item">
                 <div className="detail-label">Final portfolio value</div>
-                <div className="detail-value">{fmt(retRows[retRows.length - 1]?.total ?? 0)}</div>
+                <div className="detail-value">{fmt(allRows[allRows.length - 1]?.total ?? 0)}</div>
               </div>
               <div className="detail-item">
                 <div className="detail-label">Peak withdrawal rate</div>
                 <div className="detail-value">
-                  {pct(Math.max(...retRows.filter(r => r.portfolioValue > 0).map(r => r.withdrawalRate)))}
+                  {pct(Math.max(...allRows.filter(r => r.portfolioValue > 0).map(r => r.withdrawalRate)))}
                 </div>
               </div>
             </div>
@@ -624,8 +638,8 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                 </tr>
               </thead>
               <tbody>
-                {retRows.map(r => {
-                  const totalIn = r.ss + r.spouseSs + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW;
+                {allRows.map(r => {
+                  const totalIn = getSalary(r) + r.ss + r.spouseSs + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW;
                   const totalOut = r.totalSpending + r.totalTax;
                   const net = totalIn - totalOut;
                   const depleted = r.total <= 0;
@@ -662,8 +676,10 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
         <div className="chart-card">
           <div className="chart-title">Roth Conversion Optimizer <span className="opt-timestamp">Updated {new Date(optTimestamp).toLocaleTimeString()}</span></div>
           {optimization ? (() => {
+            const greedyResult = optimization.strategies.find(s => s.strategy.name === 'Greedy optimizer') ?? optimization.bestByTax;
             const activeBest = optimizerGoal === 'tax' ? optimization.bestByTax
               : optimizerGoal === 'portfolio' ? optimization.bestByPortfolio
+              : optimizerGoal === 'greedy' ? greedyResult
               : optimization.bestByPeakRate;
             const activeSchedule = activeBest.schedule;
             const activeScheduleYears = Object.keys(activeSchedule).map(Number).sort((a, b) => a - b);
@@ -683,6 +699,12 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                 const gain = activeBest.terminalTotal - optimization.baseline.terminalTotal;
                 if (gain > 0) return `Terminal portfolio ${fmt(gain)} larger vs no conversions`;
                 return 'Conversions do not improve terminal portfolio — early tax payments reduce compounding';
+              } else if (optimizerGoal === 'greedy') {
+                const taxSavings = optimization.baseline.lifetimeTotalTax - activeBest.lifetimeTotalTax;
+                const scheduleYears = Object.keys(activeBest.schedule).length;
+                if (scheduleYears === 0) return 'Current marginal rate is not lower than expected future RMD rate — no opportunistic conversions recommended';
+                if (taxSavings > 0) return `Converts only when current rate < future RMD rate. Saves ${fmt(taxSavings)} in lifetime taxes vs no conversions`;
+                return 'Per-year opportunistic schedule — converts whenever current bracket is cheaper than projected RMD bracket';
               } else {
                 const rateReduction = optimization.baseline.peakMarginalRate - activeBest.peakMarginalRate;
                 const taxSavings = optimization.baseline.lifetimeTotalTax - activeBest.lifetimeTotalTax;
@@ -695,12 +717,11 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
               { id: 'tax', label: 'Minimize taxes', title: 'Minimize total taxes paid from retirement through life expectancy' },
               { id: 'portfolio', label: 'Maximize portfolio', title: 'Maximize total portfolio value at end of plan — accounts for opportunity cost of paying taxes early' },
               { id: 'peakrate', label: 'Smooth brackets', title: 'Minimize peak marginal rate — prevents large RMDs from spiking you into a high bracket. Ties broken by lowest lifetime tax.' },
+              { id: 'greedy', label: 'Per-year optimal', title: 'Convert only when your current marginal rate is strictly lower than the expected future marginal rate on RMDs. Year-by-year opportunistic.' },
             ];
 
             const chartMetric = optimizerGoal === 'portfolio'
               ? { key: 'terminalTotal' as const, label: 'Terminal portfolio' }
-              : optimizerGoal === 'peakrate'
-              ? { key: 'lifetimeTotalTax' as const, label: 'Lifetime total tax' }
               : { key: 'lifetimeTotalTax' as const, label: 'Lifetime total tax' };
 
             return (
@@ -732,7 +753,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                 {/* Recommendation banner */}
                 <div className="optimizer-banner">
                   <div className="optimizer-rec-label">
-                    {optimizerGoal === 'tax' ? 'Lowest lifetime taxes' : optimizerGoal === 'portfolio' ? 'Largest terminal portfolio' : 'Smoothest tax brackets'}
+                    {optimizerGoal === 'tax' ? 'Lowest lifetime taxes' : optimizerGoal === 'portfolio' ? 'Largest terminal portfolio' : optimizerGoal === 'greedy' ? 'Per-year opportunistic' : 'Smoothest tax brackets'}
                   </div>
                   <div className="optimizer-rec-name">{activeBest.strategy.name}</div>
                   <div className="optimizer-rec-desc">{activeBest.strategy.description}</div>
@@ -785,6 +806,67 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                     </tbody>
                   </table>
                 </div>
+
+                {/* Start age analysis */}
+                {optimization.startAgeAnalysis.length > 0 && (
+                  <>
+                    <div className="chart-subtitle" style={{ marginTop: '1.5rem' }}>Conversion start age analysis</div>
+                    <div className="note" style={{ marginBottom: '0.5rem' }}>
+                      Each row shows the best possible outcome (lowest lifetime tax across all 4 brackets) if you begin conversions at that age and continue through 72. Rows stop when later starts are no longer beneficial.
+                    </div>
+                    <div className="optimizer-table-wrap">
+                      <table className="optimizer-table opt-schedule-table">
+                        <thead>
+                          <tr>
+                            <th>Start Age</th>
+                            <th>Best Bracket</th>
+                            <th>Lifetime Tax</th>
+                            <th>Tax Savings vs None</th>
+                            <th>Peak Marginal</th>
+                            <th>Terminal Portfolio</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {optimization.startAgeAnalysis.map(row => {
+                            const isCurrentStart = row.convStart === (inputs.convStart ?? inputs.retireAge);
+                            const isBestStart = row === optimization.startAgeAnalysis.reduce((best, r) => r.savings > best.savings ? r : best, optimization.startAgeAnalysis[0]);
+                            const isApplied = conversionSchedule && JSON.stringify(conversionSchedule) === JSON.stringify(row.schedule);
+                            return (
+                              <tr key={row.convStart}
+                                className={isBestStart ? 'opt-row-best' : isCurrentStart ? 'opt-row-current' : ''}
+                              >
+                                <td>
+                                  {isBestStart && <span className="opt-badge-best">BEST</span>}
+                                  {isCurrentStart && !isBestStart && <span className="opt-badge-current">YOU</span>}
+                                  {' '}{row.convStart}
+                                </td>
+                                <td>{['10%', '12%', '22%', '24%'][row.bracket]}</td>
+                                <td>{fmt(row.lifetimeTotalTax)}</td>
+                                <td style={{ color: row.savings > 0 ? '#1D9E75' : '#C0392B', fontWeight: 600 }}>
+                                  {row.savings > 0 ? '+' : ''}{fmt(row.savings)}
+                                </td>
+                                <td>{pct(row.peakMarginalRate)}</td>
+                                <td>{fmt(row.terminalTotal)}</td>
+                                <td>
+                                  {isApplied ? (
+                                    <button onClick={onClearSchedule} style={{ fontSize: '10px', padding: '2px 6px', background: '#E74C3C', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
+                                      Reset
+                                    </button>
+                                  ) : Object.keys(row.schedule).length > 0 ? (
+                                    <button onClick={() => onApplySchedule(row.schedule)} style={{ fontSize: '10px', padding: '2px 6px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
+                                      Apply
+                                    </button>
+                                  ) : null}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
 
                 {/* Comparison chart — metric adapts to goal */}
                 <div className="chart-subtitle">{chartMetric.label} by strategy</div>
@@ -977,9 +1059,9 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
       )}
 
       {activeTab === 'mc' && (() => {
-        const N = 500;
+        const N = 1000;
         const startBal = rows[retireIn]?.total ?? 0;
-        const years = retRows.length;
+        const years = allRows.length;
 
         // Run all simulations in one pass, tracking balance at each year
         const balsByYear: number[][] = Array.from({ length: years }, () => []);
@@ -987,7 +1069,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
           let bal = startBal;
           for (let y = 0; y < years; y++) {
             const randReturn = inputs.r + (Math.random() + Math.random() + Math.random() - 1.5) * 0.15;
-            const row = retRows[y];
+            const row = allRows[y];
             const net = (row?.ss ?? 0) + (row?.spouseSs ?? 0) - (row?.totalSpending ?? 0) - (row?.totalTax ?? 0);
             bal = Math.max(0, bal * (1 + randReturn) + net);
             balsByYear[y].push(bal);
@@ -1005,7 +1087,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
         const p50 = balsByYear.map(ys => ptile(ys, 0.50));
         const p75 = balsByYear.map(ys => ptile(ys, 0.75));
         const p90 = balsByYear.map(ys => ptile(ys, 0.90));
-        const labels = retRows.map(r => String(r.age));
+        const labels = allRows.map(r => String(r.age));
 
         const finalSR = successRates[successRates.length - 1] ?? 0;
         const medianFinal = p50[p50.length - 1] ?? 0;
@@ -1080,7 +1162,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                 </thead>
                 <tbody>
                   {keyAges.map(age => {
-                    const idx = retRows.findIndex(r => r.age === age);
+                    const idx = allRows.findIndex(r => r.age === age);
                     if (idx === -1) return null;
                     const sr = successRates[idx];
                     return (

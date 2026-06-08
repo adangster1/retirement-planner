@@ -31,6 +31,16 @@ export interface StrategyResult {
   marginalRateRange: number; // max − min across retirement years (smoothness metric)
 }
 
+export interface StartAgeResult {
+  convStart: number;
+  bracket: 0 | 1 | 2 | 3;
+  lifetimeTotalTax: number;
+  terminalTotal: number;
+  savings: number;           // vs no-conversion baseline
+  schedule: Record<number, number>;
+  peakMarginalRate: number;
+}
+
 export interface OptimizationOutput {
   strategies: StrategyResult[];
   best: StrategyResult;            // best by lifetime tax (backward compat alias for bestByTax)
@@ -45,11 +55,12 @@ export interface OptimizationOutput {
   recommendedBracket: 0 | 1 | 2 | 3;
   recommendedUntilAge: number;
   recommendedAvgAnnual: number;
+  startAgeAnalysis: StartAgeResult[];
 }
 
 // ── Build strategy grid (INDEPENDENT of user conversion settings) ──────────
 
-function buildStrategies(retireAge: number): ConversionStrategy[] {
+function buildStrategies(convStart: number): ConversionStrategy[] {
   const untilAges = [62, 65, 70, 72];
 
   const strategies: ConversionStrategy[] = [
@@ -64,10 +75,10 @@ function buildStrategies(retireAge: number): ConversionStrategy[] {
 
   for (let b = 0; b <= 3; b++) {
     for (const until of untilAges) {
-      if (until < retireAge) continue;
+      if (until < convStart) continue;
       strategies.push({
         name: `Fill ${BRACKET_NAMES[b]} bracket until age ${until}`,
-        description: `Convert enough each year to fill the ${BRACKET_NAMES[b]} bracket, from retirement until age ${until}.`,
+        description: `Convert enough each year to fill the ${BRACKET_NAMES[b]} bracket, from age ${convStart} until age ${until}.`,
         targetBracket: b as 0 | 1 | 2 | 3,
         maxAnnual: 0,
         untilAge: until,
@@ -84,23 +95,32 @@ function buildSchedule(
   params: InputParams,
   strategy: ConversionStrategy,
   noConvBaseline: ProjectionRow[],
+  convStart?: number,
 ): Record<number, number> {
   const schedule: Record<number, number> = {};
 
   // No-conversion strategy
   if (strategy.untilAge === 0) return schedule;
 
+  const effectiveStart = convStart ?? params.age + 1;
+
   // Track trad balance as we build the schedule — conversions in earlier
   // years reduce available trad for later years
-  const retireRow = noConvBaseline.find(r => r.age === params.retireAge);
-  let remainingTrad = retireRow?.trad ?? params.tradBal;
+  const startRow = noConvBaseline.find(r => r.age === params.age);
+  let remainingTrad = startRow?.trad ?? params.tradBal;
 
-  for (let age = params.retireAge; age <= strategy.untilAge; age++) {
+  for (let age = params.age + 1; age <= strategy.untilAge; age++) {
     const row = noConvBaseline.find(r => r.age === age);
     if (!row) continue;
 
     // Grow remaining trad by one year of returns
     remainingTrad *= (1 + params.r);
+
+    // Before conversion start: grow balance but don't convert
+    if (age < effectiveStart) {
+      remainingTrad -= row.rmd;
+      continue;
+    }
 
     // Ordinary income before conversion (RMD + taxable SS)
     const ssInc = ssAt(params, age);
@@ -147,8 +167,8 @@ function buildGreedySchedule(
   const convEndAge = 72; // always go to max — independent of user settings
 
   // Track trad balance
-  const retireRow = noConvBaseline.find(r => r.age === params.retireAge);
-  let remainingTrad = retireRow?.trad ?? params.tradBal;
+  const startRow = noConvBaseline.find(r => r.age === params.age);
+  let remainingTrad = startRow?.trad ?? params.tradBal;
 
   // Collect future RMD years for rate comparison
   const futureRmdRows = noConvBaseline.filter(r => r.age >= 73 && r.rmd > 0);
@@ -159,7 +179,7 @@ function buildGreedySchedule(
   const totalRmd = futureRmdRows.reduce((s, r) => s + r.rmd, 0);
   const avgFutureRate = totalRmd > 0 ? weightedSum / totalRmd : 0;
 
-  for (let age = params.retireAge; age <= convEndAge; age++) {
+  for (let age = params.age + 1; age <= convEndAge; age++) {
     const row = noConvBaseline.find(r => r.age === age);
     if (!row || remainingTrad <= 0) continue;
 
@@ -229,10 +249,10 @@ function buildFixedAnnualSchedule(
   noConvBaseline: ProjectionRow[],
 ): Record<number, number> {
   const schedule: Record<number, number> = {};
-  const retireRow = noConvBaseline.find(r => r.age === params.retireAge);
-  let remainingTrad = retireRow?.trad ?? params.tradBal;
+  const startRow = noConvBaseline.find(r => r.age === params.age);
+  let remainingTrad = startRow?.trad ?? params.tradBal;
 
-  for (let age = params.retireAge; age <= 72; age++) {
+  for (let age = params.age + 1; age <= 72; age++) {
     const row = noConvBaseline.find(r => r.age === age);
     if (!row || remainingTrad <= 0) continue;
     remainingTrad *= (1 + params.r);
@@ -269,11 +289,11 @@ function buildSmootherSchedule(
 
   // Upper bound: for bracket 0 (10% ceiling < std deduction), cap at the standard deduction
   // (free-conversion zone). For higher brackets, cap at the full bracket headroom.
-  const retireInflFactor = taxInflFactor(params, params.retireAge);
-  const retireNum65 = countEligible65(params, params.retireAge);
+  const startInflFactor = taxInflFactor(params, params.age + 1);
+  const startNum65 = countEligible65(params, params.age + 1);
   const maxAmount = targetBracket === 0
-    ? stdDeductionHeadroom(0, params.filingStatus, retireNum65, retireInflFactor)
-    : bracketHeadroom(0, params.filingStatus, targetBracket, retireNum65, retireInflFactor);
+    ? stdDeductionHeadroom(0, params.filingStatus, startNum65, startInflFactor)
+    : bracketHeadroom(0, params.filingStatus, targetBracket, startNum65, startInflFactor);
 
   if (maxAmount <= 0) return {};
 
@@ -312,19 +332,19 @@ function evaluateSchedule(
   // rothConv/convUntil/targetConvBracket — it only uses the schedule.
   // So no need to zero out those params here.
   const rows = runProjection(params, params.r, schedule);
-  const retireRows = rows.filter(r => r.age >= params.retireAge);
+  const allRows = rows.slice(1); // skip y=0 initial state, count ALL years (pre- and post-retirement)
   const lastRow = rows[rows.length - 1];
 
-  const lifetimeFederalTax = retireRows.reduce((s, r) => s + r.federalTax, 0);
-  const lifetimeStateTax = retireRows.reduce((s, r) => s + r.stateTax, 0);
-  const lifetimeIRMAA = retireRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0);
-  const lifetimeTotalTax = retireRows.reduce((s, r) => s + r.totalTax, 0);
-  const lifetimeTaxNPV = retireRows.reduce((s, r) => {
+  const lifetimeFederalTax = allRows.reduce((s, r) => s + r.federalTax, 0);
+  const lifetimeStateTax = allRows.reduce((s, r) => s + r.stateTax, 0);
+  const lifetimeIRMAA = allRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0);
+  const lifetimeTotalTax = allRows.reduce((s, r) => s + r.totalTax, 0);
+  const lifetimeTaxNPV = allRows.reduce((s, r) => {
     const yearsOut = Math.max(0, r.age - params.age);
     return s + r.totalTax / Math.pow(1 + params.r, yearsOut);
   }, 0);
 
-  const rates = retireRows.map(r => r.marginalRate);
+  const rates = allRows.map(r => r.marginalRate);
   const peakMarginalRate = rates.length ? Math.max(...rates) : 0;
   const minMarginalRate = rates.length ? Math.min(...rates) : 0;
   const avgMarginalRate = rates.length ? rates.reduce((s, r) => s + r, 0) / rates.length : 0;
@@ -354,32 +374,33 @@ function evaluateCurrentSettings(params: InputParams): StrategyResult {
   // This runs the full dynamic conversion logic from the sidebar,
   // using rothConv/convUntil/targetConvBracket as configured.
   const rows = runProjection(params, params.r);
-  const retireRows = rows.filter(r => r.age >= params.retireAge);
+  const allRows = rows.slice(1);
   const lastRow = rows[rows.length - 1];
 
-  const lifetimeFederalTax = retireRows.reduce((s, r) => s + r.federalTax, 0);
-  const lifetimeStateTax = retireRows.reduce((s, r) => s + r.stateTax, 0);
-  const lifetimeIRMAA = retireRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0);
-  const lifetimeTotalTax = retireRows.reduce((s, r) => s + r.totalTax, 0);
-  const lifetimeTaxNPV = retireRows.reduce((s, r) => {
+  const lifetimeFederalTax = allRows.reduce((s, r) => s + r.federalTax, 0);
+  const lifetimeStateTax = allRows.reduce((s, r) => s + r.stateTax, 0);
+  const lifetimeIRMAA = allRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0);
+  const lifetimeTotalTax = allRows.reduce((s, r) => s + r.totalTax, 0);
+  const lifetimeTaxNPV = allRows.reduce((s, r) => {
     const yearsOut = Math.max(0, r.age - params.age);
     return s + r.totalTax / Math.pow(1 + params.r, yearsOut);
   }, 0);
 
-  const rates = retireRows.map(r => r.marginalRate);
+  const rates = allRows.map(r => r.marginalRate);
   const peakMarginalRate = rates.length ? Math.max(...rates) : 0;
   const minMarginalRate = rates.length ? Math.min(...rates) : 0;
   const avgMarginalRate = rates.length ? rates.reduce((s, r) => s + r, 0) / rates.length : 0;
   const marginalRateRange = peakMarginalRate - minMarginalRate;
 
-  const schedule = retireRows
+  const schedule = rows
     .filter(r => r.conv > 0)
     .reduce((m, r) => { m[r.age] = r.conv; return m; }, {} as Record<number, number>);
 
+  const convStart = params.convStart ?? params.retireAge;
   return {
     strategy: {
       name: 'Your current settings',
-      description: `Sidebar settings: ${BRACKET_NAMES[params.targetConvBracket]} bracket, max $${params.rothConv.toLocaleString()}/yr, until age ${params.convUntil}.`,
+      description: `Sidebar settings: ${BRACKET_NAMES[params.targetConvBracket]} bracket, max $${params.rothConv.toLocaleString()}/yr, from age ${convStart} until age ${params.convUntil}.`,
       targetBracket: params.targetConvBracket,
       maxAnnual: params.rothConv,
       untilAge: params.convUntil,
@@ -412,7 +433,7 @@ export function runOptimizer(params: InputParams): OptimizationOutput {
   const noConvBaseline = runProjection(noConvParams, noConvParams.r);
 
   // 2. Build and evaluate all independent strategies
-  const strategies = buildStrategies(params.retireAge);
+  const strategies = buildStrategies(params.age + 1);
   const results: StrategyResult[] = [];
 
   for (const strat of strategies) {
@@ -480,6 +501,43 @@ export function runOptimizer(params: InputParams): OptimizationOutput {
     : 0;
   const recommendedUntilAge = scheduleYears.length > 0 ? Math.max(...scheduleYears) : 0;
 
+  // 7. Start age analysis — for each possible convStart, find best bracket and record outcome
+  const startAgeAnalysis: StartAgeResult[] = [];
+  const baselineTax = baseline.lifetimeTotalTax;
+  const untilAge72Strat = (b: 0 | 1 | 2 | 3): ConversionStrategy => ({
+    name: `Fill ${BRACKET_NAMES[b]} until 72`,
+    description: '',
+    targetBracket: b,
+    maxAnnual: 0,
+    untilAge: 72,
+  });
+
+  for (let startAge = params.age; startAge <= 72; startAge++) {
+    let best4: StrategyResult | null = null;
+    let best4Bracket: 0 | 1 | 2 | 3 = 0;
+    for (let b = 0; b <= 3; b++) {
+      const sched = buildSchedule(params, untilAge72Strat(b as 0 | 1 | 2 | 3), noConvBaseline, startAge);
+      const result = evaluateSchedule(params, sched, untilAge72Strat(b as 0 | 1 | 2 | 3));
+      if (!best4 || result.lifetimeTotalTax < best4.lifetimeTotalTax) {
+        best4 = result;
+        best4Bracket = b as 0 | 1 | 2 | 3;
+      }
+    }
+    if (!best4) continue;
+    const savings = baselineTax - best4.lifetimeTotalTax;
+    // Stop adding rows once conversions are no longer beneficial
+    if (savings <= 0 && startAgeAnalysis.length > 0) break;
+    startAgeAnalysis.push({
+      convStart: startAge,
+      bracket: best4Bracket,
+      lifetimeTotalTax: best4.lifetimeTotalTax,
+      terminalTotal: best4.terminalTotal,
+      savings,
+      schedule: best4.schedule,
+      peakMarginalRate: best4.peakMarginalRate,
+    });
+  }
+
   return {
     strategies: results,
     best,
@@ -494,5 +552,6 @@ export function runOptimizer(params: InputParams): OptimizationOutput {
     recommendedBracket: best.strategy.targetBracket,
     recommendedUntilAge,
     recommendedAvgAnnual: avgAnnual,
+    startAgeAnalysis,
   };
 }

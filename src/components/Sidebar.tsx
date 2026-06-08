@@ -280,6 +280,11 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             })()}
           </>
         )}
+        <div className="field">
+          <TipLabel text="Annual salary / wages" tip="Gross W-2 wages during working years. Used to compute bracket space for Roth conversions and estimate taxes before retirement." />
+          <input type="number" value={inputs.salary ?? ''} step={5000} placeholder="0 (enter gross wages)"
+            onInput={(e) => handleNumberChange('salary', e)} />
+        </div>
       </div>
 
       <hr className="divider" />
@@ -550,9 +555,17 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                 onInput={(e) => handleNumberChange('rothConv', e)} />
             </div>
             <div className="field">
+              <TipLabel text="Convert from age" />
+              <div className="range-row">
+                <input type="range" min={inputs.age} max={inputs.convUntil} value={inputs.convStart ?? inputs.retireAge} step={1}
+                  onInput={(e) => handleRangeChange('convStart', e)} />
+                <span className="range-val">{inputs.convStart ?? inputs.retireAge}</span>
+              </div>
+            </div>
+            <div className="field">
               <TipLabel text="Convert until age" />
               <div className="range-row">
-                <input type="range" min={60} max={80} value={inputs.convUntil} step={1}
+                <input type="range" min={inputs.convStart ?? inputs.retireAge} max={80} value={inputs.convUntil} step={1}
                   onInput={(e) => handleRangeChange('convUntil', e)} />
                 <span className="range-val">{inputs.convUntil}</span>
               </div>

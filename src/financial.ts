@@ -76,10 +76,9 @@ export function bracketHeadroom(
   inflFactor: number = 1,
 ): number {
   const std = (STD_DEDUCTION[status] + num65 * ADDITIONAL_STD_65[status]) * inflFactor;
+  // ceiling is a taxable-income threshold; max gross income at ceiling = ceiling + std
   const ceiling = getBracketCeiling(status, targetBracket, inflFactor);
-  const maxTaxableInBracket = ceiling - std;
-  const currentTaxable = Math.max(0, currentOrdinaryIncome - std);
-  return Math.max(0, maxTaxableInBracket - currentTaxable);
+  return Math.max(0, ceiling + std - currentOrdinaryIncome);
 }
 
 // Returns how much ordinary income can be added before any federal income tax is owed.
@@ -344,7 +343,7 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
 
     let yearExpense = 0, yearHcExpense = 0, yearDiscExpense = 0, yearLtcExpense = 0;
 
-    if (y <= retireIn) {
+    if (y < retireIn) {
       // Accumulation phase
       const matchPct = params.employerMatch;
       const matchLimit = (params.matchLimit / 100) * (params.tradContrib * 12);
@@ -355,8 +354,48 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
       basis += params.taxableContrib * 12; // contributions go in at par
       hsa += params.hsaContrib * 12;
 
+      const annualSalary = params.salary ?? 0;
+
+      // Full income tax on salary — standard deduction + progressive brackets
+      if (annualSalary > 0) {
+        federalTax = estimateTax(annualSalary, params.filingStatus, num65, inflFactor);
+        if (params.includeStateTax && params.stateTaxRate > 0) {
+          stateTax = Math.round(annualSalary * params.stateTaxRate);
+        }
+      }
+
+      // Pre-retirement Roth conversions (if convStart <= current age)
+      const convStart = params.convStart ?? params.retireAge;
+      if (trad > 0 && age >= convStart && age <= params.convUntil) {
+        if (conversionSchedule && conversionSchedule[age] !== undefined) {
+          conv = Math.max(0, Math.min(conversionSchedule[age], trad));
+        } else if (!conversionSchedule) {
+          // Salary fills bracket space — only remaining headroom is available for conversions
+          const headroom = bracketHeadroom(annualSalary, params.filingStatus, targetConvBracket, num65, inflFactor);
+          const maxConv = params.rothConv > 0
+            ? Math.min(params.rothConv, headroom, trad)
+            : Math.min(headroom, trad);
+          conv = Math.max(0, Math.floor(maxConv));
+        }
+        if (conv > 0) {
+          // Incremental conversion tax on top of salary (this portion is paid from taxable account)
+          const taxWithConv = estimateTax(annualSalary + conv, params.filingStatus, num65, inflFactor);
+          const convFed = Math.max(0, taxWithConv - federalTax);
+          federalTax = taxWithConv; // full tax: salary + conversion
+          convTaxCalc = convFed;
+          if (params.includeStateTax && params.stateTaxRate > 0) {
+            const convStateTax = Math.round(conv * params.stateTaxRate);
+            stateTax += convStateTax;
+            convTaxCalc += convStateTax;
+          }
+          trad -= conv;
+          roth += conv;
+          taxable = Math.max(0, taxable - convTaxCalc); // only conversion taxes drawn from taxable account
+        }
+      }
+
       magi2YearsAgo = magi1YearAgo;
-      magi1YearAgo = params.tradContrib * 12; // simplified MAGI during accumulation
+      magi1YearAgo = annualSalary + conv; // MAGI includes salary for IRMAA tracking
     } else {
       // Distribution phase
       yearExpense = Math.round(baseExpense * Math.pow(1 + params.expenseInflationRate, ry));
@@ -378,7 +417,7 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
       if (trad > 0) {
         if (conversionSchedule && conversionSchedule[age] !== undefined) {
           conv = Math.max(0, Math.min(conversionSchedule[age], trad - rmd));
-        } else if (!conversionSchedule && age <= params.convUntil) {
+        } else if (!conversionSchedule && age >= (params.convStart ?? params.retireAge) && age <= params.convUntil) {
           const initialSsTaxable = taxableSSPortion(ssInc + spouseSsInc, rmd, params.filingStatus);
           const ordinaryIncomeBeforeConv = rmd + initialSsTaxable;
           const headroom = bracketHeadroom(ordinaryIncomeBeforeConv, params.filingStatus, targetConvBracket, num65, inflFactor);
@@ -493,9 +532,10 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
     }
 
     const portfolioValue = trad + roth + taxable + hsa;
-    const ordinaryForTax = rmd + conv + ssTaxable;
+    const salaryInRow = age < params.retireAge ? (params.salary ?? 0) : 0;
+    const ordinaryForTax = rmd + conv + ssTaxable + salaryInRow;
     const mRate = marginalRate(ordinaryForTax, params.filingStatus, num65, inflFactor);
-    const grossIncome = rmd + conv + ssInc + spouseSsInc + ltcgAmount;
+    const grossIncome = rmd + conv + ssInc + spouseSsInc + ltcgAmount + salaryInRow;
     const ltcgTaxFinal = (age >= params.retireAge) ? (() => {
       // Re-derive ltcgTax for eRate calculation — already computed in distribution block
       // We need it in scope; use the value already captured in the closure via ltcgAmount
@@ -524,12 +564,12 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
       ss: Math.round(ssInc),
       spouseSs: Math.round(spouseSsInc),
       pension: 0,
-      ordinaryIncome: Math.round(rmd + conv + ssTaxable),
+      ordinaryIncome: Math.round(rmd + conv + ssTaxable + salaryInRow),
       qualifiedDividends: 0,
       ltcg: Math.round(ltcgAmount),
       ssTaxable: Math.round(ssTaxable),
       standardDeduction: Math.round((STD_DEDUCTION[params.filingStatus] + num65 * ADDITIONAL_STD_65[params.filingStatus]) * inflFactor),
-      taxableIncome: Math.round(Math.max(0, rmd + conv + ssTaxable - (STD_DEDUCTION[params.filingStatus] + num65 * ADDITIONAL_STD_65[params.filingStatus]) * inflFactor)),
+      taxableIncome: Math.round(Math.max(0, rmd + conv + ssTaxable + salaryInRow - (STD_DEDUCTION[params.filingStatus] + num65 * ADDITIONAL_STD_65[params.filingStatus]) * inflFactor)),
       federalTax,
       stateTax,
       totalTax: federalTax + stateTax + irmaaPartB + irmaaPartD + ltcgTaxFinal,

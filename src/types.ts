@@ -42,8 +42,12 @@ export interface InputParams {
   expenseInflationRate: number; // separate from general inflation
   healthcareInflationRate: number;
 
+  // Income during working years
+  salary?: number; // annual gross wages — used to compute bracket headroom for pre-retirement conversions
+
   // Roth conversions
   rothConv: number;
+  convStart: number;
   convUntil: number;
   targetConvBracket: 0 | 1 | 2 | 3; // 0=10%, 1=12%, 2=22%, 3=24%
 

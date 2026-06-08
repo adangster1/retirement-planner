@@ -52,8 +52,12 @@ const DEFAULTS: InputParams = {
   expenseInflationRate: 0.03,
   healthcareInflationRate: 0.055,
 
+  // Income during working years
+  salary: undefined,
+
   // Roth conversions
   rothConv: 20000,
+  convStart: 62,
   convUntil: 72,
   targetConvBracket: 1, // 12% bracket
 
@@ -175,10 +179,12 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer'>('balance');
   const [conversionSchedule, setConversionSchedule] = useState<Record<number, number> | null>(null);
   const [rows, setRows] = useState<ProjectionRow[]>([]);
-  const [metrics, setMetrics] = useState<{ m1: string; m2: string; m3: string }>({
+  const [metrics, setMetrics] = useState<{ m1: string; m2: string; m3: string; m4: string; m5: string }>({
     m1: '—',
     m2: '—',
     m3: '—',
+    m4: '—',
+    m5: '—',
   });
 
   // Save to localStorage whenever inputs change
@@ -196,16 +202,36 @@ const App: React.FC = () => {
     const retireRow = projectionRows[retireIn] || projectionRows[projectionRows.length - 1];
     const m1 = fmt(retireRow.total);
 
-    const postRetire = projectionRows.filter(r => r.age >= inputs.retireAge && r.totalTax > 0);
-    const avgTax = postRetire.length
-      ? Math.round(postRetire.reduce((s, r) => s + r.totalTax, 0) / postRetire.length)
-      : 0;
-    const m2 = fmt(avgTax);
+    const allProjectionRows = projectionRows.slice(1); // all years from current age, matching Tax Analysis tab
+    const lifetimeTax = Math.round(allProjectionRows.reduce((s, r) => s + r.totalTax, 0));
+    const m2 = fmt(lifetimeTax);
+    const retireRows = projectionRows.slice(retireIn); // retirement rows only (for MC sim)
 
     const peakRmd = projectionRows.reduce((mx, r) => (r.rmd > mx ? r.rmd : mx), 0);
     const m3 = peakRmd > 0 ? `${fmt(peakRmd)}/yr` : 'None';
 
-    setMetrics({ m1, m2, m3 });
+    const lastRow = projectionRows[projectionRows.length - 1];
+    const m4 = lastRow ? fmt(lastRow.total) : '—';
+
+    // Monte Carlo success rate — 1000 sims, tracks whether balance stays positive to life expectancy
+    const MC_N = 1000;
+    const startBal = retireRow.total;
+    let mcSuccesses = 0;
+    for (let sim = 0; sim < MC_N; sim++) {
+      let bal = startBal;
+      let failed = false;
+      for (let i = 0; i < retireRows.length; i++) {
+        const row = retireRows[i];
+        const randReturn = inputs.r + (Math.random() + Math.random() + Math.random() - 1.5) * 0.15;
+        const net = (row.ss ?? 0) + (row.spouseSs ?? 0) - (row.totalSpending ?? 0) - (row.totalTax ?? 0);
+        bal = Math.max(0, bal * (1 + randReturn) + net);
+        if (bal === 0) { failed = true; break; }
+      }
+      if (!failed) mcSuccesses++;
+    }
+    const m5 = `${Math.round((mcSuccesses / MC_N) * 100)}%`;
+
+    setMetrics({ m1, m2, m3, m4, m5 });
   }, [inputs, conversionSchedule]);
 
   // Run optimizer (memoized, only recompute when inputs change)
