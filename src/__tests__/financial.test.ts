@@ -38,6 +38,7 @@ const BASE: InputParams = {
   expenseInflationRate: 0.03,
   healthcareInflationRate: 0.055,
   rothConv: 20000,
+  convStart: 62,
   convUntil: 72,
   targetConvBracket: 1,
   r: 0.07,
