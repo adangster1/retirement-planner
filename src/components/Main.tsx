@@ -304,8 +304,16 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
     );
   };
 
-  const accountsConfigured = (inputs.accounts?.length ?? 0) > 0;
-  const expensesConfigured = (inputs.expenseItems?.length ?? 0) > 0;
+  const accountsConfigured =
+    (inputs.accounts?.length ?? 0) > 0 ||
+    inputs.tradBal > 0 || inputs.rothBal > 0 || inputs.taxableBal > 0 || inputs.hsaBal > 0 ||
+    inputs.tradContrib > 0 || inputs.rothContrib > 0 || inputs.taxableContrib > 0 || inputs.hsaContrib > 0 ||
+    !!inputs.salary;
+
+  const expensesConfigured =
+    (inputs.expenseItems?.length ?? 0) > 0 ||
+    inputs.expenses > 0 || inputs.healthcareExpenses > 0 ||
+    inputs.discretionaryExpenses > 0 || inputs.ltcExpenses > 0;
 
   type TabDef = { key: typeof activeTab; label: string; category: 'setup' | 'results' | 'tool'; configured?: boolean };
   const tabs: TabDef[] = [

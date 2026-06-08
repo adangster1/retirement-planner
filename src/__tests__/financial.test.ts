@@ -124,15 +124,17 @@ describe('runProjection', () => {
     }
   });
 
-  it('Roth conversion increases roth balance and decreases trad balance', () => {
-    const withConv = { ...BASE, rothConv: 50000, convUntil: 72, retireAge: 55 };
-    const noConv = { ...BASE, rothConv: 0, convUntil: 0, retireAge: 55 };
+  it('Roth conversion decreases trad balance and conversions are recorded', () => {
+    // Zero expenses so portfolio draws don't obscure the conversion mechanics
+    const withConv = { ...BASE, rothConv: 50000, convStart: 55, convUntil: 72, retireAge: 55, expenses: 0, healthcareExpenses: 0, discretionaryExpenses: 0 };
+    const noConv = { ...BASE, rothConv: 0, convStart: 55, convUntil: 0, retireAge: 55, expenses: 0, healthcareExpenses: 0, discretionaryExpenses: 0 };
     const rowsWith = runProjection(withConv, withConv.r);
     const rowsNo = runProjection(noConv, noConv.r);
     const age65With = rowsWith.find(r => r.age === 65)!;
     const age65No = rowsNo.find(r => r.age === 65)!;
-    expect(age65With.roth).toBeGreaterThan(age65No.roth);
+    expect(rowsWith.some(r => r.conv > 0)).toBe(true);
     expect(age65With.trad).toBeLessThan(age65No.trad);
+    expect(age65With.roth).toBeGreaterThan(age65No.roth);
   });
 
   it('convTax is zero when there is no conversion', () => {

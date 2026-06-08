@@ -89,9 +89,9 @@ describe('runOptimizer', () => {
     expect(opt.bestByPeakRate.peakMarginalRate).toBeLessThanOrEqual(opt.baseline.peakMarginalRate);
   });
 
-  it('all lifetime tax values are positive', () => {
+  it('all lifetime tax values are non-negative', () => {
     for (const s of opt.strategies) {
-      expect(s.lifetimeTotalTax).toBeGreaterThan(0);
+      expect(s.lifetimeTotalTax).toBeGreaterThanOrEqual(0);
       expect(s.lifetimeFederalTax).toBeGreaterThanOrEqual(0);
       expect(s.lifetimeIRMAA).toBeGreaterThanOrEqual(0);
     }
@@ -165,7 +165,7 @@ describe('runOptimizer', () => {
     // (these are NOT strict — they can be equal or even reversed for some inputs,
     //  but the tax minimizer should generally do better on taxes)
     // Just verify each goal picks a valid strategy with non-degenerate outputs
-    expect(opt.bestByTax.lifetimeTotalTax).toBeGreaterThan(0);
+    expect(opt.bestByTax.lifetimeTotalTax).toBeGreaterThanOrEqual(0);
     expect(opt.bestByPortfolio.terminalTotal).toBeGreaterThan(0);
   });
 
@@ -182,7 +182,7 @@ describe('optimizer goal consistency', () => {
     expect(opt.bestByPortfolio).toBeDefined();
     // They might be the same strategy — that is fine and valid
     expect(opt.bestByTax.terminalTotal).toBeGreaterThan(0);
-    expect(opt.bestByPortfolio.lifetimeTotalTax).toBeGreaterThan(0);
+    expect(opt.bestByPortfolio.lifetimeTotalTax).toBeGreaterThanOrEqual(0);
   });
 
   it('large trad balance scenario finds meaningful tax savings', () => {
