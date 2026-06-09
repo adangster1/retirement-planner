@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { InputParams, ProjectionRow, Account } from './types';
 import { fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, runProjection, fmt, ssInterpolate } from './financial';
-import { runMonteCarlo } from './monteCarlo';
+import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } from './monteCarlo';
 import { runOptimizer } from './optimizer';
 import type { OptimizationOutput } from './optimizer';
 import { exportToSpreadsheet } from './exportSpreadsheet';
@@ -103,12 +103,75 @@ interface StoredPlan {
   inputs: InputParams;
   conversionSchedule: Record<number, number> | null;
   optMinStartAge?: number;
+  monteCarloSettings?: MonteCarloSettings;
+}
+
+type MonteCarloPreset = 'base' | 'stress';
+type MonteCarloMethod = 'parametric' | 'historical';
+
+interface MonteCarloSettings {
+  runs: number;
+  seed: string;
+  preset: MonteCarloPreset;
+  method: MonteCarloMethod;
+  stockAllocation: number;
+  bondAllocation: number;
+  cashAllocation: number;
+  blockSize: number;
+}
+
+const DEFAULT_MONTE_CARLO_SETTINGS: MonteCarloSettings = {
+  runs: 1000,
+  seed: DEFAULT_MONTE_CARLO_OPTIONS.seed,
+  preset: 'base',
+  method: 'historical',
+  stockAllocation: DEFAULT_MONTE_CARLO_OPTIONS.stockAllocation,
+  bondAllocation: DEFAULT_MONTE_CARLO_OPTIONS.bondAllocation,
+  cashAllocation: DEFAULT_MONTE_CARLO_OPTIONS.cashAllocation,
+  blockSize: DEFAULT_MONTE_CARLO_OPTIONS.blockSize,
+};
+
+function getMonteCarloOptions(
+  preset: MonteCarloPreset,
+  runs: number,
+  seed: string,
+  method: 'parametric' | 'historical',
+  stockAllocation: number,
+  bondAllocation: number,
+  cashAllocation: number,
+  blockSize: number,
+): MonteCarloOptions {
+  const common = {
+    method,
+    runs,
+    seed,
+    stockAllocation,
+    bondAllocation,
+    cashAllocation,
+    blockSize,
+  };
+  return preset === 'stress'
+    ? {
+        ...common,
+        portfolioStdDev: 0.19,
+        taxableStdDev: 0.17,
+        hsaStdDev: 0.17,
+        inflationStdDev: 0.024,
+        expenseInflationStdDev: 0.022,
+        healthcareInflationStdDev: 0.032,
+        bearMarketProbability: 0.12,
+        bearMarketReturnDrag: -0.22,
+        bearMarketInflationShock: 0.015,
+        spendingShockProbability: 0.08,
+        spendingShockPct: 0.35,
+      }
+    : common;
 }
 
 const newPlanId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 function createPlan(name: string, inputs: InputParams = DEFAULTS): StoredPlan {
-  return { id: newPlanId(), name, inputs, conversionSchedule: null };
+  return { id: newPlanId(), name, inputs, conversionSchedule: null, monteCarloSettings: DEFAULT_MONTE_CARLO_SETTINGS };
 }
 
 function loadPlans(): { plans: StoredPlan[]; activePlanId: string } {
@@ -148,6 +211,7 @@ function exportPlanToFile(plan: StoredPlan): void {
     inputs: plan.inputs,
     conversionSchedule: plan.conversionSchedule ?? null,
     optMinStartAge: plan.optMinStartAge,
+    monteCarloSettings: plan.monteCarloSettings ?? DEFAULT_MONTE_CARLO_SETTINGS,
   };
   const data = JSON.stringify(payload, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
@@ -159,7 +223,7 @@ function exportPlanToFile(plan: StoredPlan): void {
   URL.revokeObjectURL(url);
 }
 
-function importPlanFromFile(file: File): Promise<{ inputs: InputParams; conversionSchedule: Record<number, number> | null; optMinStartAge?: number }> {
+function importPlanFromFile(file: File): Promise<{ inputs: InputParams; conversionSchedule: Record<number, number> | null; optMinStartAge?: number; monteCarloSettings?: MonteCarloSettings }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -171,6 +235,7 @@ function importPlanFromFile(file: File): Promise<{ inputs: InputParams; conversi
             inputs: { ...DEFAULTS, ...parsed.inputs },
             conversionSchedule: parsed.conversionSchedule ?? null,
             optMinStartAge: parsed.optMinStartAge,
+            monteCarloSettings: { ...DEFAULT_MONTE_CARLO_SETTINGS, ...(parsed.monteCarloSettings ?? {}) },
           });
         } else {
           // Legacy format: bare InputParams object
@@ -202,6 +267,7 @@ const App: React.FC = () => {
   const inputs = activePlan.inputs;
   const conversionSchedule = activePlan.conversionSchedule;
   const optMinStartAge = activePlan.optMinStartAge ?? inputs.age;
+  const monteCarloSettings = { ...DEFAULT_MONTE_CARLO_SETTINGS, ...(activePlan.monteCarloSettings ?? {}) };
 
   // Persist whenever plans or active ID change
   useEffect(() => {
@@ -226,10 +292,30 @@ const App: React.FC = () => {
     const lastRow = projectionRows[projectionRows.length - 1];
     const m4 = lastRow ? fmt(lastRow.total) : '—';
 
-    const m5 = `${runMonteCarlo(inputs, conversionSchedule, 1000).finalSuccessRate}%`;
+    const m5 = `${runMonteCarlo(inputs, conversionSchedule, getMonteCarloOptions(
+      monteCarloSettings.preset,
+      monteCarloSettings.runs,
+      monteCarloSettings.seed,
+      monteCarloSettings.method,
+      monteCarloSettings.stockAllocation,
+      monteCarloSettings.bondAllocation,
+      monteCarloSettings.cashAllocation,
+      monteCarloSettings.blockSize,
+    )).finalSuccessRate}%`;
 
     setMetrics({ m1, m2, m3, m4, m5 });
-  }, [inputs, conversionSchedule]);
+  }, [
+    inputs,
+    conversionSchedule,
+    monteCarloSettings.preset,
+    monteCarloSettings.runs,
+    monteCarloSettings.seed,
+    monteCarloSettings.method,
+    monteCarloSettings.stockAllocation,
+    monteCarloSettings.bondAllocation,
+    monteCarloSettings.cashAllocation,
+    monteCarloSettings.blockSize,
+  ]);
 
   const optimization: OptimizationOutput | null = useMemo(() => {
     try {
@@ -254,6 +340,9 @@ const App: React.FC = () => {
 
   const setOptMinStartAge = (age: number) =>
     updateActivePlan({ optMinStartAge: age });
+
+  const updateMonteCarloSettings = (patch: Partial<MonteCarloSettings>) =>
+    updateActivePlan({ monteCarloSettings: { ...monteCarloSettings, ...patch } });
 
   const handleInputChange = (field: keyof InputParams, value: string | number | boolean) => {
     setPlans(prev => prev.map(p => {
@@ -307,7 +396,12 @@ const App: React.FC = () => {
 
   const resetPlan = () => {
     if (!window.confirm(`Reset "${activePlan.name}" to blank defaults? All data in this plan will be lost.`)) return;
-    updateActivePlan({ inputs: DEFAULTS, conversionSchedule: null, optMinStartAge: undefined });
+    updateActivePlan({
+      inputs: DEFAULTS,
+      conversionSchedule: null,
+      optMinStartAge: undefined,
+      monteCarloSettings: DEFAULT_MONTE_CARLO_SETTINGS,
+    });
   };
 
   const deletePlan = () => {
@@ -324,12 +418,18 @@ const App: React.FC = () => {
   const handleExportSpreadsheet = () => exportToSpreadsheet(inputs, rows);
   const handleImport = async (file: File) => {
     try {
-      const { inputs: imported, conversionSchedule: importedSchedule, optMinStartAge: importedOptAge } = await importPlanFromFile(file);
+      const {
+        inputs: imported,
+        conversionSchedule: importedSchedule,
+        optMinStartAge: importedOptAge,
+        monteCarloSettings: importedMonteCarloSettings,
+      } = await importPlanFromFile(file);
       const name = file.name.replace(/\.json$/i, '').replace(/[-_]/g, ' ');
       const plan: StoredPlan = {
         ...createPlan(name || 'Imported Plan', imported),
         conversionSchedule: importedSchedule,
         optMinStartAge: importedOptAge,
+        monteCarloSettings: importedMonteCarloSettings ?? DEFAULT_MONTE_CARLO_SETTINGS,
       };
       setPlans(prev => [...prev, plan]);
       setActivePlanId(plan.id);
@@ -415,6 +515,23 @@ const App: React.FC = () => {
         onAccountsChange={handleAccountsChange}
         optMinStartAge={optMinStartAge}
         setOptMinStartAge={setOptMinStartAge}
+        mcRuns={monteCarloSettings.runs}
+        setMcRuns={runs => updateMonteCarloSettings({ runs })}
+        mcSeed={monteCarloSettings.seed}
+        setMcSeed={seed => updateMonteCarloSettings({ seed })}
+        mcPreset={monteCarloSettings.preset}
+        setMcPreset={preset => updateMonteCarloSettings({ preset })}
+        mcMethod={monteCarloSettings.method}
+        setMcMethod={method => updateMonteCarloSettings({ method })}
+        mcStockAllocation={monteCarloSettings.stockAllocation}
+        setMcStockAllocation={stockAllocation => updateMonteCarloSettings({ stockAllocation })}
+        mcBondAllocation={monteCarloSettings.bondAllocation}
+        setMcBondAllocation={bondAllocation => updateMonteCarloSettings({ bondAllocation })}
+        mcCashAllocation={monteCarloSettings.cashAllocation}
+        setMcCashAllocation={cashAllocation => updateMonteCarloSettings({ cashAllocation })}
+        mcBlockSize={monteCarloSettings.blockSize}
+        setMcBlockSize={blockSize => updateMonteCarloSettings({ blockSize })}
+        getMonteCarloOptions={getMonteCarloOptions}
       />
     </div>
   );

@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { estimateConfiguredStateTax, estimateTax, fullRetirementAge, runProjection, ssInterpolate, taxInflFactor } from '../financial';
-import { buildScenarioPath } from '../monteCarlo';
+import { buildHistoricalScenarioPath, buildScenarioPath, runMonteCarlo } from '../monteCarlo';
 import type { InputParams } from '../types';
 
 const BASE: InputParams = {
@@ -119,15 +119,49 @@ describe('runProjection', () => {
   });
 
   it('builds Monte Carlo paths with separate annual return draws', () => {
-    const randomValues = [0, 0.25, 0.5, 0.75, 1];
-    let idx = 0;
-    const spy = vi.spyOn(Math, 'random').mockImplementation(() => randomValues[idx++ % randomValues.length]);
-
-    const path = buildScenarioPath(BASE);
+    const path = buildScenarioPath(BASE, { seed: 'path-test' });
 
     expect(path.length).toBe(BASE.lifeExp - BASE.age);
     expect(new Set(path.map(y => y.portfolioReturn)).size).toBeGreaterThan(1);
-    spy.mockRestore();
+  });
+
+  it('returns reproducible Monte Carlo results for the same seed', () => {
+    const first = runMonteCarlo(BASE, null, { runs: 25, seed: 'repeatable' });
+    const second = runMonteCarlo(BASE, null, { runs: 25, seed: 'repeatable' });
+
+    expect(second.finalSuccessRate).toBe(first.finalSuccessRate);
+    expect(second.percentiles.p50).toEqual(first.percentiles.p50);
+  });
+
+  it('builds historical bootstrap paths from sampled historical years', () => {
+    const path = buildHistoricalScenarioPath(BASE, {
+      seed: 'historical-path',
+      stockAllocation: 0.60,
+      bondAllocation: 0.35,
+      cashAllocation: 0.05,
+      blockSize: 5,
+      spendingShockProbability: 0,
+    });
+
+    expect(path.length).toBe(BASE.lifeExp - BASE.age);
+    expect(new Set(path.map(y => y.portfolioReturn)).size).toBeGreaterThan(1);
+    expect(path.every(y => y.inflation !== undefined)).toBe(true);
+  });
+
+  it('returns reproducible historical bootstrap Monte Carlo results for the same seed', () => {
+    const first = runMonteCarlo(BASE, null, { method: 'historical', runs: 25, seed: 'history-repeatable' });
+    const second = runMonteCarlo(BASE, null, { method: 'historical', runs: 25, seed: 'history-repeatable' });
+
+    expect(second.finalSuccessRate).toBe(first.finalSuccessRate);
+    expect(second.percentiles.p50).toEqual(first.percentiles.p50);
+  });
+
+  it('keeps bear-market regimes mean-neutral around the configured return', () => {
+    const path = buildScenarioPath(BASE, { seed: 'mean-return', bearMarketProbability: 0.08 });
+    const avgReturn = path.reduce((sum, y) => sum + (y.portfolioReturn ?? 0), 0) / path.length;
+
+    expect(avgReturn).toBeGreaterThan(BASE.r - 0.08);
+    expect(avgReturn).toBeLessThan(BASE.r + 0.08);
   });
 
   it('all rows have non-negative portfolio values', () => {

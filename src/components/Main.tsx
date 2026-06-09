@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { InputParams, ProjectionRow, Account } from '../types';
-import { runMonteCarlo } from '../monteCarlo';
+import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } from '../monteCarlo';
 import { ExpenseTab } from './ExpenseTab';
 import { AccountsTab } from './AccountsTab';
 import { Chart as ChartJS, type ChartData, type ChartOptions } from 'chart.js';
@@ -39,6 +39,32 @@ interface MainProps {
   onAccountsChange: (accounts: Account[]) => void;
   optMinStartAge: number;
   setOptMinStartAge: (age: number) => void;
+  mcRuns: number;
+  setMcRuns: (runs: number) => void;
+  mcSeed: string;
+  setMcSeed: (seed: string) => void;
+  mcPreset: MonteCarloPreset;
+  setMcPreset: (preset: MonteCarloPreset) => void;
+  mcMethod: MonteCarloMethod;
+  setMcMethod: (method: MonteCarloMethod) => void;
+  mcStockAllocation: number;
+  setMcStockAllocation: (allocation: number) => void;
+  mcBondAllocation: number;
+  setMcBondAllocation: (allocation: number) => void;
+  mcCashAllocation: number;
+  setMcCashAllocation: (allocation: number) => void;
+  mcBlockSize: number;
+  setMcBlockSize: (blockSize: number) => void;
+  getMonteCarloOptions: (
+    preset: MonteCarloPreset,
+    runs: number,
+    seed: string,
+    method: MonteCarloMethod,
+    stockAllocation: number,
+    bondAllocation: number,
+    cashAllocation: number,
+    blockSize: number,
+  ) => MonteCarloOptions;
 }
 
 const fmt = (n: number): string => {
@@ -52,8 +78,43 @@ const fmt = (n: number): string => {
 const pct = (n: number): string => (n * 100).toFixed(1) + '%';
 
 type OptimizerGoal = 'tax' | 'portfolio' | 'peakrate' | 'greedy';
+type MonteCarloPreset = 'base' | 'stress';
+type MonteCarloMethod = 'parametric' | 'historical';
 
-const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metrics, optimization, optTimestamp, conversionSchedule, onApplySchedule, onClearSchedule, onInputChange, onExpenseItemsChange, onAccountsChange, optMinStartAge, setOptMinStartAge }) => {
+const Main: React.FC<MainProps> = ({
+  inputs,
+  activeTab,
+  setActiveTab,
+  rows,
+  metrics,
+  optimization,
+  optTimestamp,
+  conversionSchedule,
+  onApplySchedule,
+  onClearSchedule,
+  onInputChange,
+  onExpenseItemsChange,
+  onAccountsChange,
+  optMinStartAge,
+  setOptMinStartAge,
+  mcRuns,
+  setMcRuns,
+  mcSeed,
+  setMcSeed,
+  mcPreset,
+  setMcPreset,
+  mcMethod,
+  setMcMethod,
+  mcStockAllocation,
+  setMcStockAllocation,
+  mcBondAllocation,
+  setMcBondAllocation,
+  mcCashAllocation,
+  setMcCashAllocation,
+  mcBlockSize,
+  setMcBlockSize,
+  getMonteCarloOptions,
+}) => {
   const [optimizerGoal, setOptimizerGoal] = useState<OptimizerGoal>('tax');
   const allRows = rows.slice(1); // all years from current age onward (skip y=0 initial state)
   const getSalary = (r: ProjectionRow) => r.age < inputs.retireAge ? (inputs.salary ?? 0) : 0;
@@ -1220,43 +1281,142 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
       )}
 
       {activeTab === 'mc' && (() => {
-        const N = 1000;
-        const mc = runMonteCarlo(inputs, conversionSchedule, N);
+        const mcOptions = getMonteCarloOptions(
+          mcPreset,
+          mcRuns,
+          mcSeed,
+          mcMethod,
+          mcStockAllocation,
+          mcBondAllocation,
+          mcCashAllocation,
+          mcBlockSize,
+        );
+        const mc = runMonteCarlo(inputs, conversionSchedule, mcOptions);
         const successRates = mc.successRates;
         const { p10, p25, p50, p75, p90 } = mc.percentiles;
         const labels = mc.labels.map(String);
+        const finalAge = mc.labels[mc.labels.length - 1] ?? inputs.lifeExp;
 
         const finalSR = successRates[successRates.length - 1] ?? 0;
         const medianFinal = p50[p50.length - 1] ?? 0;
         const p10Final = p10[p10.length - 1] ?? 0;
         const p90Final = p90[p90.length - 1] ?? 0;
 
-        const keyAges = [70, 75, 80, 85, 90, inputs.lifeExp]
-          .filter((a, i, arr) => arr.indexOf(a) === i && a >= inputs.retireAge && a <= inputs.lifeExp);
+        const keyAges = [70, 75, 80, 85, 90, inputs.lifeExp, finalAge]
+          .filter((a, i, arr) => arr.indexOf(a) === i && a >= inputs.retireAge && a <= finalAge);
 
         const srColor = (sr: number) => sr >= 90 ? '#1D9E75' : sr >= 75 ? '#BA7517' : '#C0392B';
 
         return (
           <div className="chart-card">
-            <div className="chart-title">Monte Carlo — {N} simulated retirements</div>
+            <div className="chart-title">Monte Carlo — {mc.runs} simulated retirements</div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, margin: '0 0 1rem 0', alignItems: 'end' }}>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Method</label>
+                <select value={mcMethod} onChange={e => setMcMethod(e.target.value as MonteCarloMethod)}>
+                  <option value="parametric">Parametric</option>
+                  <option value="historical">Historical bootstrap</option>
+                </select>
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Preset</label>
+                <select value={mcPreset} onChange={e => setMcPreset(e.target.value as MonteCarloPreset)}>
+                  <option value="base">Base</option>
+                  <option value="stress">Stress</option>
+                </select>
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Runs</label>
+                <select value={mcRuns} onChange={e => setMcRuns(Number(e.target.value))}>
+                  <option value={500}>500</option>
+                  <option value={1000}>1,000</option>
+                  <option value={2500}>2,500</option>
+                  <option value={5000}>5,000</option>
+                </select>
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Seed</label>
+                <input
+                  type="text"
+                  value={mcSeed}
+                  onChange={e => setMcSeed(e.target.value || DEFAULT_MONTE_CARLO_OPTIONS.seed)}
+                  style={{ width: '100%', padding: '5px 8px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6 }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, margin: '0 0 1rem 0', alignItems: 'end' }}>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Stocks</label>
+                <input type="number" min={0} max={100} value={Math.round(mcStockAllocation * 100)} onChange={e => setMcStockAllocation(Number(e.target.value) / 100)} />
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Bonds</label>
+                <input type="number" min={0} max={100} value={Math.round(mcBondAllocation * 100)} onChange={e => setMcBondAllocation(Number(e.target.value) / 100)} />
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Cash</label>
+                <input type="number" min={0} max={100} value={Math.round(mcCashAllocation * 100)} onChange={e => setMcCashAllocation(Number(e.target.value) / 100)} />
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Block years</label>
+                <select value={mcBlockSize} onChange={e => setMcBlockSize(Number(e.target.value))} disabled={mcMethod !== 'historical'}>
+                  <option value={1}>1</option>
+                  <option value={3}>3</option>
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                </select>
+              </div>
+            </div>
 
             <div className="detail-panel" style={{ marginBottom: '1rem' }}>
               <div className="detail-grid">
                 <div className="detail-item" style={{ background: finalSR >= 90 ? '#EBF5FB' : finalSR >= 75 ? '#FEF9E7' : '#FDEDEC' }}>
-                  <div className="detail-label">Success rate at {inputs.lifeExp}</div>
+                  <div className="detail-label">Success rate at {finalAge}</div>
                   <div className="detail-value" style={{ color: srColor(finalSR), fontSize: '1.3rem' }}>{finalSR}%</div>
                 </div>
                 <div className="detail-item">
-                  <div className="detail-label">Median portfolio at {inputs.lifeExp}</div>
+                  <div className="detail-label">Median portfolio at {finalAge}</div>
                   <div className="detail-value">{fmt(medianFinal)}</div>
                 </div>
                 <div className="detail-item">
-                  <div className="detail-label">Worst 10% at {inputs.lifeExp}</div>
+                  <div className="detail-label">Worst 10% at {finalAge}</div>
                   <div className="detail-value" style={{ color: p10Final <= 0 ? '#C0392B' : undefined }}>{fmt(p10Final)}</div>
                 </div>
                 <div className="detail-item">
-                  <div className="detail-label">Best 10% at {inputs.lifeExp}</div>
+                  <div className="detail-label">Best 10% at {finalAge}</div>
                   <div className="detail-value">{fmt(p90Final)}</div>
+                </div>
+              </div>
+              <div className="detail-grid" style={{ marginTop: '0.5rem' }}>
+                <div className="detail-item">
+                  <div className="detail-label">Method</div>
+                  <div className="detail-value">{mc.assumptions.method === 'historical' ? 'Historical bootstrap' : 'Parametric'}</div>
+                </div>
+                <div className="detail-item">
+                  <div className="detail-label">Allocation</div>
+                  <div className="detail-value">{`${Math.round(mc.assumptions.stockAllocation * 100)}/${Math.round(mc.assumptions.bondAllocation * 100)}/${Math.round(mc.assumptions.cashAllocation * 100)}`}</div>
+                </div>
+                <div className="detail-item">
+                  <div className="detail-label">{mc.assumptions.method === 'historical' ? 'Block years' : 'Portfolio volatility'}</div>
+                  <div className="detail-value">{mc.assumptions.method === 'historical' ? mc.assumptions.blockSize : pct(mc.assumptions.portfolioStdDev)}</div>
+                </div>
+                <div className="detail-item">
+                  <div className="detail-label">{mc.assumptions.method === 'historical' ? 'Historical period' : 'Expected portfolio return'}</div>
+                  <div className="detail-value">{mc.assumptions.method === 'historical' ? '1928-2025' : pct(inputs.r)}</div>
+                </div>
+                <div className="detail-item">
+                  <div className="detail-label">Bear-market year chance</div>
+                  <div className="detail-value">{mc.assumptions.method === 'historical' ? 'Historical years' : pct(mc.assumptions.bearMarketProbability)}</div>
+                </div>
+                <div className="detail-item">
+                  <div className="detail-label">Return/inflation correlation</div>
+                  <div className="detail-value">{mc.assumptions.returnInflationCorrelation.toFixed(2)}</div>
+                </div>
+                <div className="detail-item">
+                  <div className="detail-label">Spending shock chance</div>
+                  <div className="detail-value">{pct(mc.assumptions.spendingShockProbability)}</div>
                 </div>
               </div>
             </div>
@@ -1299,13 +1459,13 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                 </thead>
                 <tbody>
                   {keyAges.map(age => {
-                    const idx = allRows.findIndex(r => r.age === age);
+                    const idx = mc.labels.findIndex(label => label === age);
                     if (idx === -1) return null;
                     const sr = successRates[idx];
                     return (
                       <tr key={age}>
-                        <td style={{ fontWeight: age === inputs.lifeExp ? 600 : undefined }}>
-                          {age}{age === inputs.lifeExp ? ' ★' : ''}
+                        <td style={{ fontWeight: age === finalAge ? 600 : undefined }}>
+                          {age}{age === finalAge ? ' ★' : ''}
                         </td>
                         <td style={{ color: p10[idx] <= 0 ? '#C0392B' : undefined }}>{fmt(p10[idx])}</td>
                         <td style={{ color: p25[idx] <= 0 ? '#C0392B' : undefined }}>{fmt(p25[idx])}</td>
@@ -1321,10 +1481,10 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
             </div>
 
             <div className="note" style={{ marginTop: '0.75rem' }}>
-              <strong>How this works:</strong> Each simulation reruns the full projection engine with the same spending, taxes, Social Security, RMDs, conversions, and account rules, but with a different year-by-year path for portfolio returns, taxable returns, HSA returns, inflation, healthcare inflation, expense inflation, and Social Security COLA.
+              <strong>How this works:</strong> Each simulation reruns the full projection engine with the same taxes, Social Security, RMDs, conversions, and account rules. Parametric mode uses seeded correlated return/inflation shocks; historical bootstrap samples {mc.assumptions.blockSize}-year blocks from annual S&P 500, 10-year Treasury, T-bill, and CPI history from 1928-2025.
               <br /><strong>Success</strong> = portfolio still has money at that age.
               <strong> Percentiles</strong> show the spread of outcomes — "Worst 10%" means 9 out of 10 simulations did better than this number.
-              Spending shocks and asset-class correlations are not modeled yet.
+              The model is still a planning approximation; historical mode uses one global allocation and does not yet model account-specific asset location.
             </div>
           </div>
         );
