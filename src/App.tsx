@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { InputParams, ProjectionRow, Account } from './types';
-import { runProjection, fmt, ssInterpolate } from './financial';
+import { fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, runProjection, fmt, ssInterpolate } from './financial';
 import { runOptimizer } from './optimizer';
 import type { OptimizationOutput } from './optimizer';
 import { exportToSpreadsheet } from './exportSpreadsheet';
@@ -13,10 +13,12 @@ const LEGACY_KEY = 'retirement-planner-inputs';
 const DEFAULTS: InputParams = {
   // Personal
   age: 30,
+  birthYear: undefined,
   retireAge: 67,
   lifeExp: 95,
   filingStatus: 'single',
   spouseAge: undefined,
+  spouseBirthYear: undefined,
   spouseLifeExp: undefined,
   spouseSsType: 'own',
   spouseSs: undefined,
@@ -28,6 +30,7 @@ const DEFAULTS: InputParams = {
   // Accounts
   tradBal: 0,
   rothBal: 0,
+  rothBasis: undefined,
   taxableBal: 0,
   taxableBasis: undefined,
   hsaBal: 0,
@@ -61,10 +64,16 @@ const DEFAULTS: InputParams = {
   convStart: 67,
   convUntil: 72,
   targetConvBracket: 1,
+  qcdAnnual: 0,
+  qcdStartAge: 70,
+  useJointLifeRmd: false,
 
   // Returns (nominal)
   r: 0.07,
   taxableReturn: 0.07,
+  taxableOrdinaryYield: 0,
+  taxableQualifiedDividendYield: 0.015,
+  taxableRealizedGainYield: 0,
   hsaReturn: 0.07,
 
   // Inflation
@@ -76,6 +85,10 @@ const DEFAULTS: InputParams = {
 
   // Assumptions
   includeIRMAA: true,
+  includeMedicarePremiums: false,
+  includeAcaPremiumCredits: false,
+  acaMonthlyPremium: 0,
+  acaMonthlyCredit: 0,
   includeStateTax: false,
   ssCOLA: 0.025,
 
@@ -206,8 +219,6 @@ const App: React.FC = () => {
     const allProjectionRows = projectionRows.slice(1);
     const lifetimeTax = Math.round(allProjectionRows.reduce((s, r) => s + r.totalTax, 0));
     const m2 = fmt(lifetimeTax);
-    const retireRows = projectionRows.slice(retireIn);
-
     const peakRmd = projectionRows.reduce((mx, r) => (r.rmd > mx ? r.rmd : mx), 0);
     const m3 = peakRmd > 0 ? `${fmt(peakRmd)}/yr` : 'None';
 
@@ -215,18 +226,11 @@ const App: React.FC = () => {
     const m4 = lastRow ? fmt(lastRow.total) : '—';
 
     const MC_N = 1000;
-    const startBal = retireRow.total;
     let mcSuccesses = 0;
     for (let sim = 0; sim < MC_N; sim++) {
-      let bal = startBal;
-      let failed = false;
-      for (let i = 0; i < retireRows.length; i++) {
-        const row = retireRows[i];
-        const randReturn = inputs.r + (Math.random() + Math.random() + Math.random() - 1.5) * 0.15;
-        const net = (row.ss ?? 0) + (row.spouseSs ?? 0) - (row.totalSpending ?? 0) - (row.totalTax ?? 0);
-        bal = Math.max(0, bal * (1 + randReturn) + net);
-        if (bal === 0) { failed = true; break; }
-      }
+      const randReturn = inputs.r + (Math.random() + Math.random() + Math.random() - 1.5) * 0.15;
+      const simRows = runProjection(inputs, randReturn, conversionSchedule ?? undefined);
+      const failed = simRows.slice(retireIn).some(r => r.total <= 0);
       if (!failed) mcSuccesses++;
     }
     const m5 = `${Math.round((mcSuccesses / MC_N) * 100)}%`;
@@ -263,13 +267,20 @@ const App: React.FC = () => {
       if (p.id !== activePlanId) return p;
       const next = { ...p.inputs, [field]: value };
       const { ss62, ss67, ss70 } = next;
-      if (ss62 && ss67 && ss70 && (field === 'ssAge' || field === 'ss62' || field === 'ss67' || field === 'ss70')) {
-        next.ss = ssInterpolate(ss62, ss67, ss70, next.ssAge);
+      if (ss62 && ss67 && ss70 && (field === 'ssAge' || field === 'ss62' || field === 'ss67' || field === 'ss70' || field === 'birthYear' || field === 'age')) {
+        next.ss = ssInterpolate(ss62, ss67, ss70, next.ssAge, fullRetirementAge(inferredBirthYear(next)));
       }
       const { spouseSs62, spouseSs67, spouseSs70 } = next;
       if (spouseSs62 && spouseSs67 && spouseSs70 &&
-          (field === 'spouseSsAge' || field === 'spouseSs62' || field === 'spouseSs67' || field === 'spouseSs70')) {
-        next.spouseSs = ssInterpolate(spouseSs62, spouseSs67, spouseSs70, next.spouseSsAge ?? 67);
+          (field === 'spouseSsAge' || field === 'spouseSs62' || field === 'spouseSs67' || field === 'spouseSs70' || field === 'spouseBirthYear' || field === 'spouseAge')) {
+        const spouseBirthYear = inferredSpouseBirthYear(next);
+        next.spouseSs = ssInterpolate(
+          spouseSs62,
+          spouseSs67,
+          spouseSs70,
+          next.spouseSsAge ?? 67,
+          spouseBirthYear !== undefined ? fullRetirementAge(spouseBirthYear) : 67,
+        );
       }
       return { ...p, inputs: next };
     }));

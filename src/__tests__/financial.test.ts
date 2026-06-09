@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runProjection } from '../financial';
+import { estimateConfiguredStateTax, estimateTax, fullRetirementAge, runProjection, ssInterpolate, taxInflFactor } from '../financial';
 import type { InputParams } from '../types';
 
 const BASE: InputParams = {
@@ -41,18 +41,41 @@ const BASE: InputParams = {
   convStart: 62,
   convUntil: 72,
   targetConvBracket: 1,
+  qcdAnnual: 0,
+  qcdStartAge: 70,
+  useJointLifeRmd: false,
   r: 0.07,
   taxableReturn: 0.07,
+  taxableOrdinaryYield: 0,
+  taxableQualifiedDividendYield: 0.015,
+  taxableRealizedGainYield: 0,
   hsaReturn: 0.07,
   inf: 0.03,
   stateTaxRate: 0,
   stateTaxBrackets: undefined,
   includeIRMAA: true,
+  includeMedicarePremiums: false,
+  includeAcaPremiumCredits: false,
+  acaMonthlyPremium: 0,
+  acaMonthlyCredit: 0,
   includeStateTax: false,
   ssCOLA: 0.025,
 };
 
 describe('runProjection', () => {
+  it('calculates Social Security full retirement age by birth year', () => {
+    expect(fullRetirementAge(1954)).toBe(66);
+    expect(fullRetirementAge(1956)).toBeCloseTo(66 + 4 / 12, 5);
+    expect(fullRetirementAge(1959)).toBeCloseTo(66 + 10 / 12, 5);
+    expect(fullRetirementAge(1960)).toBe(67);
+  });
+
+  it('uses birth-year FRA to shape Social Security interpolation', () => {
+    const fra67 = ssInterpolate(1400, 2000, 2480, 66, 67);
+    const fra66And4 = ssInterpolate(1400, 2000, 2480, 66, 66 + 4 / 12);
+    expect(fra66And4).not.toBe(fra67);
+  });
+
   it('returns one row per year from current age to life expectancy', () => {
     const rows = runProjection(BASE, BASE.r);
     expect(rows.length).toBe(BASE.lifeExp - BASE.age + 1);
@@ -97,6 +120,172 @@ describe('runProjection', () => {
     if (atRMD) expect(atRMD.rmd).toBeGreaterThan(0);
   });
 
+  it('calculates RMD from prior year-end balance, not post-return balance', () => {
+    // age=74 in 2026 -> birth year 1952 -> already subject to RMDs.
+    const params = {
+      ...BASE,
+      age: 74,
+      retireAge: 74,
+      lifeExp: 75,
+      tradBal: 1000000,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      tradContrib: 0,
+      rothContrib: 0,
+      taxableContrib: 0,
+      hsaContrib: 0,
+      ss: 0,
+      rothConv: 0,
+      convUntil: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      r: 0.10,
+    };
+    const rows = runProjection(params, params.r);
+    const age75 = rows.find(r => r.age === 75)!;
+    expect(age75.rmd).toBe(Math.round(1000000 / 24.6));
+    expect(age75.rmd).not.toBe(Math.round(1100000 / 24.6));
+  });
+
+  it('excludes QCDs from taxable RMD income while still distributing the RMD', () => {
+    const withQcd = {
+      ...BASE,
+      age: 74,
+      birthYear: 1952,
+      retireAge: 74,
+      lifeExp: 75,
+      filingStatus: 'single' as const,
+      tradBal: 1000000,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      ss: 0,
+      rothConv: 0,
+      convUntil: 0,
+      qcdAnnual: 10000,
+      qcdStartAge: 70,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      r: 0,
+    };
+    const rows = runProjection(withQcd, 0);
+    const age75 = rows.find(r => r.age === 75)!;
+    expect(age75.rmd).toBe(Math.round(1000000 / 24.6));
+    expect(age75.qcd).toBe(10000);
+    expect(age75.ordinaryIncome).toBe(age75.rmd - age75.qcd);
+    expect(age75.trad).toBe(1000000 - age75.rmd);
+  });
+
+  it('reduces RMDs when joint life estimate is enabled for a much younger spouse', () => {
+    const base = {
+      ...BASE,
+      age: 74,
+      birthYear: 1952,
+      retireAge: 74,
+      lifeExp: 75,
+      filingStatus: 'married' as const,
+      spouseAge: 60,
+      spouseBirthYear: 1966,
+      tradBal: 1000000,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      ss: 0,
+      rothConv: 0,
+      convUntil: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      r: 0,
+    };
+    const uniform = runProjection({ ...base, useJointLifeRmd: false }, 0).find(r => r.age === 75)!;
+    const joint = runProjection({ ...base, useJointLifeRmd: true }, 0).find(r => r.age === 75)!;
+    expect(joint.rmd).toBeLessThan(uniform.rmd);
+  });
+
+  it('uses updated 2026 standard deduction amounts', () => {
+    expect(estimateTax(16100, 'single')).toBe(0);
+    expect(estimateTax(16200, 'single')).toBe(10);
+    expect(estimateTax(32200, 'married')).toBe(0);
+    expect(estimateTax(32300, 'married')).toBe(10);
+  });
+
+  it('supports configured progressive state tax brackets', () => {
+    const stateParams = {
+      ...BASE,
+      includeStateTax: true,
+      stateTaxRate: 0.05,
+      stateTaxBrackets: JSON.stringify([[10000, 0.01], [50000, 0.03], [null, 0.05]]),
+    };
+    expect(estimateConfiguredStateTax(60000, stateParams)).toBe(100 + 1200 + 500);
+    expect(estimateConfiguredStateTax(60000, { ...stateParams, stateTaxBrackets: undefined })).toBe(3000);
+  });
+
+  it('models taxable account qualified dividends and realized gains', () => {
+    const taxableIncome = {
+      ...BASE,
+      age: 60,
+      retireAge: 60,
+      lifeExp: 61,
+      filingStatus: 'single' as const,
+      tradBal: 0,
+      rothBal: 0,
+      taxableBal: 100000,
+      taxableBasis: 100000,
+      hsaBal: 0,
+      ss: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      taxableReturn: 0,
+      taxableQualifiedDividendYield: 0.02,
+      taxableRealizedGainYield: 0.01,
+    };
+    const rows = runProjection(taxableIncome, 0);
+    const age61 = rows.find(r => r.age === 61)!;
+    expect(age61.qualifiedDividends).toBe(2000);
+    expect(age61.ltcg).toBe(1000);
+    expect(age61.totalTax).toBeGreaterThanOrEqual(0);
+  });
+
+  it('uses the 2026 highest Part D IRMAA surcharge', () => {
+    const highMagi = {
+      ...BASE,
+      age: 63,
+      retireAge: 64,
+      lifeExp: 66,
+      tradBal: 0,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      ss: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      includeIRMAA: true,
+      accounts: [{
+        id: 'pension',
+        name: 'Large pension',
+        type: 'pension' as const,
+        balance: 0,
+        monthlyIncome: 90000,
+        incomeStartAge: 64,
+        incomeEndAge: 65,
+      }],
+    };
+    const rows = runProjection(highMagi, highMagi.r);
+    const age66 = rows.find(r => r.age === 66)!;
+    expect(age66.irmaaPartD).toBe(Math.round(91.00 * 12 * taxInflFactor(highMagi, 66)));
+  });
+
   it('Roth conversions only occur within the specified window', () => {
     const rows = runProjection(BASE, BASE.r);
     const retireRows = rows.filter(r => r.age >= BASE.retireAge);
@@ -125,6 +314,59 @@ describe('runProjection', () => {
     }
   });
 
+  it('caps basic retirement and HSA contributions at 2026 limits', () => {
+    const capped = {
+      ...BASE,
+      age: 49,
+      retireAge: 51,
+      lifeExp: 51,
+      tradBal: 0,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      tradContrib: 5000,
+      rothContrib: 5000,
+      hsaContrib: 2000,
+      taxableContrib: 0,
+      employerMatch: 0,
+      salary: 200000,
+      r: 0,
+      hsaReturn: 0,
+      taxableReturn: 0,
+    };
+    const rows = runProjection(capped, 0);
+    const age50 = rows.find(r => r.age === 50)!;
+    expect(age50.trad + age50.roth).toBe(32500);
+    expect(age50.hsa).toBe(8750);
+  });
+
+  it('taxes and penalizes early Roth withdrawals above basis', () => {
+    const earlyRoth = {
+      ...BASE,
+      age: 55,
+      retireAge: 55,
+      lifeExp: 56,
+      filingStatus: 'single' as const,
+      tradBal: 0,
+      rothBal: 100000,
+      rothBasis: 20000,
+      taxableBal: 0,
+      hsaBal: 0,
+      ss: 0,
+      expenses: 5000,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      rothConv: 0,
+      convUntil: 0,
+      r: 0,
+    };
+    const rows = runProjection(earlyRoth, 0);
+    const age56 = rows.find(r => r.age === 56)!;
+    expect(age56.rothW).toBeGreaterThan(20000);
+    expect(age56.federalTax).toBeGreaterThan(0);
+  });
+
   it('Roth conversion decreases trad balance and conversions are recorded', () => {
     // Zero expenses so portfolio draws don't obscure the conversion mechanics
     const withConv = { ...BASE, rothConv: 50000, convStart: 55, convUntil: 72, retireAge: 55, expenses: 0, healthcareExpenses: 0, discretionaryExpenses: 0 };
@@ -142,6 +384,92 @@ describe('runProjection', () => {
     const noConv = { ...BASE, rothConv: 0, convUntil: 0 };
     const rows = runProjection(noConv, noConv.r);
     for (const r of rows) expect(r.convTax).toBe(0);
+  });
+
+  it('taxes traditional withdrawals used for spending and grosses up the cash need', () => {
+    const tradOnly = {
+      ...BASE,
+      age: 65,
+      retireAge: 65,
+      lifeExp: 66,
+      filingStatus: 'single' as const,
+      spouseAge: undefined,
+      tradBal: 1000000,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      ss: 0,
+      ssAge: 70,
+      rothConv: 0,
+      convUntil: 0,
+      expenses: 10000,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      includeStateTax: false,
+    };
+    const rows = runProjection(tradOnly, 0);
+    const age66 = rows.find(r => r.age === 66)!;
+    expect(age66.tradW).toBeGreaterThan(age66.totalSpending);
+    expect(age66.ordinaryIncome).toBe(age66.tradW);
+    expect(age66.federalTax).toBe(estimateTax(age66.ordinaryIncome, 'single', 1, taxInflFactor(tradOnly, 66)));
+  });
+
+  it('switches to survivor treatment after primary life expectancy', () => {
+    const survivor = {
+      ...BASE,
+      age: 65,
+      birthYear: 1961,
+      retireAge: 65,
+      lifeExp: 66,
+      filingStatus: 'married' as const,
+      spouseAge: 64,
+      spouseBirthYear: 1962,
+      spouseLifeExp: 68,
+      tradBal: 0,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      ss: 3000,
+      ssAge: 65,
+      spouseSsType: 'own' as const,
+      spouseSs: 1000,
+      spouseSsAge: 65,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+    };
+    const rows = runProjection(survivor, 0);
+    const age67 = rows.find(r => r.age === 67)!;
+    expect(age67.ss).toBe(0);
+    expect(age67.spouseSs).toBeGreaterThan(3000 * 12);
+    expect(age67.standardDeduction).toBe(Math.round((16100 + 2050) * taxInflFactor(survivor, 67)));
+  });
+
+  it('adds ACA premiums net of credits before Medicare age', () => {
+    const aca = {
+      ...BASE,
+      age: 60,
+      retireAge: 60,
+      lifeExp: 61,
+      filingStatus: 'single' as const,
+      tradBal: 0,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      ss: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      includeAcaPremiumCredits: true,
+      acaMonthlyPremium: 800,
+      acaMonthlyCredit: 300,
+    };
+    const rows = runProjection(aca, 0);
+    const age61 = rows.find(r => r.age === 61)!;
+    expect(age61.healthcareExpenses).toBe(6000);
   });
 
   it('higher return rate produces higher terminal portfolio', () => {

@@ -10,8 +10,8 @@ A client-side retirement planning tool built with React and TypeScript. All calc
 - **Year-by-year projection** from current age through life expectancy, covering traditional, Roth, taxable brokerage, and HSA balances
 - **Roth conversion optimizer** — explores a bracket × until-age strategy grid plus a greedy per-year optimizer; recommends the schedule that minimizes lifetime taxes, maximizes terminal portfolio, or smooths income
 - **Social Security estimator** — enter SSA.gov estimates at 62/67/70; slider interpolates using the actual SSA piecewise reduction formula with COLA applied annually after claim age
-- **Tax analysis** — 2025 federal brackets extrapolated forward by inflation, correct SS provisional income formula, IRMAA surcharges, 65+ standard deduction, optional state tax
-- **Monte Carlo simulation** — 1,000 scenarios with randomized returns, showing success rate
+- **Tax analysis** — 2026 federal brackets extrapolated forward by inflation, correct SS provisional income formula, IRMAA surcharges, 65+ standard deduction, optional flat or bracketed state tax
+- **Monte Carlo simulation** — 1,000 full projection reruns with randomized return assumptions, showing success rate
 - **Expense modeling** — basic monthly categories (base, healthcare, discretionary, LTC reserve) or advanced itemized expense editor with recurring, loan, and one-time entries
 - **Account modeling** — basic balance/contribution fields or advanced account editor for granular investment accounts with custom returns and guaranteed income streams
 - **Export** — JSON plan file or Excel spreadsheet with year-by-year projection data
@@ -83,7 +83,7 @@ src/
 
 ## Key Assumptions
 
-- Tax brackets use 2025 values, extrapolated forward by the model's inflation rate
-- RMDs follow SECURE 2.0 rules (start at age 73, IRS Uniform Lifetime Table)
+- Tax brackets use 2026 values, extrapolated forward by the model's inflation rate
+- RMDs follow SECURE 2.0 rules using prior year-end balance; optional QCDs and an estimated joint-life adjustment are supported
 - Roth conversion taxes are modeled as paid from the taxable account
 - IRMAA surcharges based on MAGI from 2 years prior (approximated from current-year income)

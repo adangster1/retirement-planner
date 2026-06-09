@@ -1,5 +1,5 @@
 import type { InputParams, ProjectionRow } from './types';
-import { runProjection, bracketHeadroom, stdDeductionHeadroom, taxableSSPortion, ssAt, spouseSsAt, taxInflFactor, countEligible65 } from './financial';
+import { runProjection, bracketHeadroom, stdDeductionHeadroom, taxableSSPortion, ssAt, spouseSsAt, taxInflFactor, countEligible65, estimateTax, estimateConfiguredStateTax } from './financial';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -26,6 +26,7 @@ export interface StrategyResult {
   terminalTrad: number;
   terminalRoth: number;
   terminalTotal: number;
+  terminalAfterTax: number;
   peakMarginalRate: number;
   avgMarginalRate: number;
   marginalRateRange: number; // max − min across retirement years (smoothness metric)
@@ -357,6 +358,13 @@ function evaluateSchedule(
   const rows = runProjection(params, params.r, schedule);
   const allRows = rows.slice(1); // skip y=0 initial state, count ALL years (pre- and post-retirement)
   const lastRow = rows[rows.length - 1];
+  const terminalTradTax = lastRow
+    ? estimateTax(lastRow.trad, params.filingStatus, countEligible65(params, lastRow.age), taxInflFactor(params, lastRow.age))
+      + estimateConfiguredStateTax(lastRow.trad, params)
+    : 0;
+  const terminalAfterTax = lastRow
+    ? Math.max(0, lastRow.trad - terminalTradTax) + lastRow.roth + lastRow.taxable + lastRow.hsa
+    : 0;
 
   const lifetimeFederalTax = allRows.reduce((s, r) => s + r.federalTax, 0);
   const lifetimeStateTax = allRows.reduce((s, r) => s + r.stateTax, 0);
@@ -385,6 +393,7 @@ function evaluateSchedule(
     terminalTrad: lastRow?.trad ?? 0,
     terminalRoth: lastRow?.roth ?? 0,
     terminalTotal: lastRow?.total ?? 0,
+    terminalAfterTax,
     peakMarginalRate,
     avgMarginalRate,
     marginalRateRange,
@@ -399,6 +408,13 @@ function evaluateCurrentSettings(params: InputParams): StrategyResult {
   const rows = runProjection(params, params.r);
   const allRows = rows.slice(1);
   const lastRow = rows[rows.length - 1];
+  const terminalTradTax = lastRow
+    ? estimateTax(lastRow.trad, params.filingStatus, countEligible65(params, lastRow.age), taxInflFactor(params, lastRow.age))
+      + estimateConfiguredStateTax(lastRow.trad, params)
+    : 0;
+  const terminalAfterTax = lastRow
+    ? Math.max(0, lastRow.trad - terminalTradTax) + lastRow.roth + lastRow.taxable + lastRow.hsa
+    : 0;
 
   const lifetimeFederalTax = allRows.reduce((s, r) => s + r.federalTax, 0);
   const lifetimeStateTax = allRows.reduce((s, r) => s + r.stateTax, 0);
@@ -438,6 +454,7 @@ function evaluateCurrentSettings(params: InputParams): StrategyResult {
     terminalTrad: lastRow?.trad ?? 0,
     terminalRoth: lastRow?.roth ?? 0,
     terminalTotal: lastRow?.total ?? 0,
+    terminalAfterTax,
     peakMarginalRate,
     avgMarginalRate,
     marginalRateRange,
@@ -498,7 +515,7 @@ export function runOptimizer(params: InputParams, minConvStartAge?: number): Opt
   // 6. Find best per goal — exclude "Your current settings" from competition
   const eligible = results.filter(r => r.strategy.name !== 'Your current settings');
   const bestByTax = [...eligible].sort((a, b) => a.lifetimeTotalTax - b.lifetimeTotalTax)[0];
-  const bestByPortfolio = [...eligible].sort((a, b) => b.terminalTotal - a.terminalTotal)[0];
+  const bestByPortfolio = [...eligible].sort((a, b) => b.terminalAfterTax - a.terminalAfterTax)[0];
 
   // "Smooth brackets" always recommends the Income smoother — it was built for this goal.
   // Fall back to lowest-peak grid strategy only if smoother somehow raises the peak rate.

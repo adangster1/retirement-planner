@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { InputParams, ProjectionRow, Account } from '../types';
+import { runProjection } from '../financial';
 import { ExpenseTab } from './ExpenseTab';
 import { AccountsTab } from './AccountsTab';
 import { Chart as ChartJS, type ChartData, type ChartOptions } from 'chart.js';
@@ -54,7 +55,6 @@ type OptimizerGoal = 'tax' | 'portfolio' | 'peakrate' | 'greedy';
 
 const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metrics, optimization, optTimestamp, conversionSchedule, onApplySchedule, onClearSchedule, onInputChange, onExpenseItemsChange, onAccountsChange, optMinStartAge, setOptMinStartAge }) => {
   const [optimizerGoal, setOptimizerGoal] = useState<OptimizerGoal>('tax');
-  const retireIn = Math.max(1, inputs.retireAge - inputs.age);
   const allRows = rows.slice(1); // all years from current age onward (skip y=0 initial state)
   const getSalary = (r: ProjectionRow) => r.age < inputs.retireAge ? (inputs.salary ?? 0) : 0;
 
@@ -1221,19 +1221,15 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
 
       {activeTab === 'mc' && (() => {
         const N = 1000;
-        const startBal = rows[retireIn]?.total ?? 0;
         const years = allRows.length;
 
         // Run all simulations in one pass, tracking balance at each year
         const balsByYear: number[][] = Array.from({ length: years }, () => []);
         for (let sim = 0; sim < N; sim++) {
-          let bal = startBal;
+          const randReturn = inputs.r + (Math.random() + Math.random() + Math.random() - 1.5) * 0.15;
+          const simRows = runProjection(inputs, randReturn, conversionSchedule ?? undefined).slice(1);
           for (let y = 0; y < years; y++) {
-            const randReturn = inputs.r + (Math.random() + Math.random() + Math.random() - 1.5) * 0.15;
-            const row = allRows[y];
-            const net = (row?.ss ?? 0) + (row?.spouseSs ?? 0) - (row?.totalSpending ?? 0) - (row?.totalTax ?? 0);
-            bal = Math.max(0, bal * (1 + randReturn) + net);
-            balsByYear[y].push(bal);
+            balsByYear[y].push(simRows[y]?.total ?? 0);
           }
         }
 
@@ -1345,10 +1341,10 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
             </div>
 
             <div className="note" style={{ marginTop: '0.75rem' }}>
-              <strong>How this works:</strong> Each simulation runs your full retirement using the same projected spending, taxes, and Social Security, but with a different random sequence of investment returns (average {pct(inputs.r)}, standard deviation ~15% — roughly matching historical stock/bond mix volatility).
+              <strong>How this works:</strong> Each simulation reruns the full projection engine with the same spending, taxes, Social Security, RMDs, conversions, and account rules, but with a different randomized annual return assumption around {pct(inputs.r)}.
               <br /><strong>Success</strong> = portfolio still has money at that age.
               <strong> Percentiles</strong> show the spread of outcomes — "Worst 10%" means 9 out of 10 simulations did better than this number.
-              Only returns are randomized; spending shocks, sequence-of-returns risk in early retirement, and inflation variability are not modeled.
+              Only the annual return assumption is randomized; spending shocks, year-by-year return sequences, and inflation variability are not modeled.
             </div>
           </div>
         );

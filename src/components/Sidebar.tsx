@@ -1,6 +1,6 @@
 import React from 'react';
 import type { InputParams } from '../types';
-import { ssInterpolate } from '../financial';
+import { fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, ssInterpolate } from '../financial';
 import TipLabel from './TipLabel';
 
 interface SidebarProps {
@@ -18,7 +18,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
   const handleNumberChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
     const val = Number((e.target as HTMLInputElement).value);
     // Optional spouse fields should be undefined when empty, not 0
-    const optionalFields: (keyof InputParams)[] = ['spouseAge', 'spouseLifeExp', 'spouseSs62', 'spouseSs67', 'spouseSs70'];
+    const optionalFields: (keyof InputParams)[] = ['birthYear', 'spouseAge', 'spouseBirthYear', 'spouseLifeExp', 'spouseSs62', 'spouseSs67', 'spouseSs70'];
     onInputChange(field, val || (optionalFields.includes(field) ? undefined as any : 0));
   };
 
@@ -50,6 +50,12 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
               onInput={(e) => handleRangeChange('age', e)} />
             <span className="range-val">{inputs.age}</span>
           </div>
+        </div>
+        <div className="field">
+          <TipLabel text="Birth year" />
+          <input type="number" value={inputs.birthYear ?? ''}
+            step={1} placeholder={String(new Date().getFullYear() - inputs.age)}
+            onInput={(e) => handleNumberChange('birthYear', e)} />
         </div>
         <div className="field">
           <TipLabel text="Retirement age" />
@@ -84,6 +90,12 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                 onInput={(e) => handleNumberChange('spouseAge', e)} />
             </div>
             <div className="field">
+              <TipLabel text="Spouse birth year" />
+              <input type="number" value={inputs.spouseBirthYear ?? ''}
+                step={1} placeholder={inputs.spouseAge !== undefined ? String(new Date().getFullYear() - inputs.spouseAge) : 'e.g. 1978'}
+                onInput={(e) => handleNumberChange('spouseBirthYear', e)} />
+            </div>
+            <div className="field">
               <TipLabel text="Spouse life expectancy" />
               <input type="number" value={inputs.spouseLifeExp ?? ''}
                 step={1} placeholder="e.g. 90"
@@ -113,10 +125,12 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
               const showSpousal = ssType === 'spousal' || ssType === 'combined';
 
               // Spousal benefit helper
-              const primaryPIA = inputs.ss67 || inputs.ss;
+              const primaryFra = fullRetirementAge(inferredBirthYear(inputs));
+              const spouseFra = fullRetirementAge(inferredSpouseBirthYear(inputs) ?? inferredBirthYear(inputs));
+              const primaryPIA = inputs.ss67 ? inputs.ss67 / (primaryFra <= 67 ? 1 + 0.08 * (67 - primaryFra) : 1) : inputs.ss;
               const spousalAt = (a: number) => {
-                const effAge = Math.min(a, 67);
-                const mo = Math.max(0, (67 - effAge) * 12);
+                const effAge = Math.min(a, spouseFra);
+                const mo = Math.max(0, Math.round((spouseFra - effAge) * 12));
                 const f = Math.min(mo, 36) * (25 / 36) / 100;
                 const x = Math.max(0, mo - 36) * (5 / 12) / 100;
                 return Math.round(primaryPIA * 0.5 * (1 - f - x));
@@ -152,7 +166,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                     </div>
                     {showSpousal && (
                       <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>
-                        Spousal benefit doesn't increase past FRA (age 67).
+                        Spousal benefit doesn't increase past FRA (age {spouseFra.toFixed(1)}).
                       </div>
                     )}
                   </div>
@@ -162,7 +176,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                     const effClaimAge = Math.min(claimAge, 67);
                     const fraMonthly = Math.round(primaryPIA * 0.5);
                     const monthly = spousalAt(effClaimAge);
-                    const monthsBefore = Math.max(0, (67 - effClaimAge) * 12);
+                    const monthsBefore = Math.max(0, Math.round((spouseFra - effClaimAge) * 12));
                     const f = Math.min(monthsBefore, 36) * (25 / 36) / 100;
                     const x = Math.max(0, monthsBefore - 36) * (5 / 12) / 100;
                     const reductionPct = ((f + x) * 100).toFixed(1);
@@ -170,7 +184,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                       <div className="field">
                         <div style={{ fontSize: '11px', color: '#555', background: '#FFF8E7', border: '1px solid #F0D080', borderRadius: '4px', padding: '6px 8px' }}>
                           <div style={{ fontWeight: 600, marginBottom: '3px' }}>Spousal benefit (50% of your PIA)</div>
-                          <div>At FRA (67): <strong>${fraMonthly.toLocaleString()}/mo</strong></div>
+                          <div>At FRA ({spouseFra.toFixed(1)}): <strong>${fraMonthly.toLocaleString()}/mo</strong></div>
                           {monthsBefore > 0
                             ? <div>At age {effClaimAge}: <strong>${monthly.toLocaleString()}/mo</strong> <span style={{ color: '#888' }}>(−{reductionPct}% early claim)</span></div>
                             : null}
@@ -181,7 +195,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
 
                   {/* Benefit summary display */}
                   {showOwn && inputs.spouseSs62 && inputs.spouseSs67 && inputs.spouseSs70 && (() => {
-                    const ownBenefit = ssInterpolate(inputs.spouseSs62, inputs.spouseSs67, inputs.spouseSs70, claimAge);
+                    const ownBenefit = ssInterpolate(inputs.spouseSs62, inputs.spouseSs67, inputs.spouseSs70, claimAge, spouseFra);
                     const spousalBenefit = spousalAt(Math.min(claimAge, 67));
                     if (ssType === 'combined') {
                       const ownWins = ownBenefit >= spousalBenefit;
@@ -221,7 +235,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                     const s62 = inputs.spouseSs62!;
                     const s67 = inputs.spouseSs67!;
                     const s70 = inputs.spouseSs70!;
-                    const ownAt = (a: number) => ssInterpolate(s62, s67, s70, a);
+                    const ownAt = (a: number) => ssInterpolate(s62, s67, s70, a, spouseFra);
                     const breakeven = (a: number): string => {
                       if (a === 67) return '—';
                       const mo = ownAt(a);
@@ -253,7 +267,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                               const spousal = spousalAt(Math.min(a, 67));
                               const effective = ssType === 'combined' ? Math.max(own, spousal) : own;
                               const isSelected = a === (inputs.spouseSsAge ?? 67);
-                              const isFRA = a === 67;
+                              const isFRA = a === Math.round(spouseFra);
                               return (
                                 <tr key={a}
                                   style={{ background: isSelected ? '#EBF5FB' : isFRA ? '#F0FFF8' : undefined, fontWeight: isSelected || isFRA ? 600 : undefined, cursor: 'pointer' }}
@@ -342,8 +356,10 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
           const ss62 = inputs.ss62!;
           const ss67 = inputs.ss67!;
           const ss70 = inputs.ss70!;
+          const fraAge = fullRetirementAge(inferredBirthYear(inputs));
+          const fraDisplayAge = Math.round(fraAge);
 
-          const benefitAt = (age: number) => ssInterpolate(ss62, ss67, ss70, age);
+          const benefitAt = (age: number) => ssInterpolate(ss62, ss67, ss70, age, fraAge);
 
           const breakeven = (age: number): string => {
             if (age === 67) return '—';
@@ -375,7 +391,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                   {[62, 63, 64, 65, 66, 67, 68, 69, 70].map(age => {
                     const mo = benefitAt(age);
                     const isSelected = age === inputs.ssAge;
-                    const isFRA = age === 67;
+                    const isFRA = age === fraDisplayAge;
                     return (
                       <tr
                         key={age}
@@ -398,7 +414,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                 </tbody>
               </table>
               <div style={{ fontSize: '10px', color: '#999', marginTop: '4px' }}>
-                Break-even = age when cumulative benefit equals claiming at 67. Click a row to select.
+                Break-even = age when cumulative benefit equals claiming at 67. Full retirement age is {fraAge.toFixed(1)}. Click a row to select.
               </div>
             </div>
           );
@@ -481,17 +497,72 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
           <TipLabel text="Include IRMAA surcharges" />
         </div>
         <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <input type="checkbox" checked={inputs.includeMedicarePremiums}
+            onChange={(e) => handleCheckboxChange('includeMedicarePremiums', e)} />
+          <TipLabel text="Include Medicare base premiums" />
+        </div>
+        <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <input type="checkbox" checked={inputs.includeAcaPremiumCredits}
+            onChange={(e) => handleCheckboxChange('includeAcaPremiumCredits', e)} />
+          <TipLabel text="Include ACA premiums/credits" />
+        </div>
+        {inputs.includeAcaPremiumCredits && (
+          <div className="two-col">
+            <div className="field">
+              <TipLabel text="ACA premium ($/mo)" />
+              <input type="number" value={inputs.acaMonthlyPremium} step={50}
+                onInput={(e) => handleNumberChange('acaMonthlyPremium', e)} />
+            </div>
+            <div className="field">
+              <TipLabel text="ACA credit ($/mo)" />
+              <input type="number" value={inputs.acaMonthlyCredit} step={50}
+                onInput={(e) => handleNumberChange('acaMonthlyCredit', e)} />
+            </div>
+          </div>
+        )}
+        <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <input type="checkbox" checked={inputs.includeStateTax}
             onChange={(e) => handleCheckboxChange('includeStateTax', e)} />
           <TipLabel text="Include state tax" />
         </div>
         {inputs.includeStateTax && (
+          <>
+            <div className="field">
+              <TipLabel text="State tax rate (%)" />
+              <div className="range-row">
+                <input type="range" min={0} max={13} value={inputs.stateTaxRate * 100} step={0.25}
+                  onInput={(e) => handleRateChange('stateTaxRate', e)} />
+                <span className="range-val">{(inputs.stateTaxRate * 100).toFixed(2)}%</span>
+              </div>
+            </div>
+            <div className="field">
+              <TipLabel text="State tax brackets JSON" />
+              <textarea
+                value={inputs.stateTaxBrackets ?? ''}
+                placeholder="[[10000,0.01],[50000,0.03],[null,0.05]]"
+                style={{ width: '100%', minHeight: 54, fontSize: 11, fontFamily: 'monospace', padding: '4px 6px', border: '1px solid #ccc', borderRadius: 3 }}
+                onInput={(e) => onInputChange('stateTaxBrackets', (e.target as HTMLTextAreaElement).value || undefined as any)}
+              />
+            </div>
+          </>
+        )}
+        <div className="field">
+          <TipLabel text="Annual QCD ($)" />
+          <input type="number" value={inputs.qcdAnnual} step={1000}
+            onInput={(e) => handleNumberChange('qcdAnnual', e)} />
+        </div>
+        <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <input type="checkbox" checked={inputs.useJointLifeRmd}
+            onChange={(e) => handleCheckboxChange('useJointLifeRmd', e)} />
+          <TipLabel text="Use joint life RMD estimate" />
+        </div>
+        {inputs.qcdAnnual > 0 && (
           <div className="field">
-            <TipLabel text="State tax rate (%)" />
+            <TipLabel text="QCD start age" />
             <div className="range-row">
-              <input type="range" min={0} max={13} value={inputs.stateTaxRate * 100} step={0.25}
-                onInput={(e) => handleRateChange('stateTaxRate', e)} />
-              <span className="range-val">{(inputs.stateTaxRate * 100).toFixed(2)}%</span>
+              <input type="range" min={70} max={100} value={inputs.qcdStartAge} step={1}
+                onInput={(e) => handleRangeChange('qcdStartAge', e)} />
+              <span className="range-val">{inputs.qcdStartAge}</span>
             </div>
           </div>
         )}

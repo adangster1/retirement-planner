@@ -2,10 +2,12 @@
 export interface InputParams {
   // Personal
   age: number;
+  birthYear?: number;
   retireAge: number;
   lifeExp: number;
   filingStatus: 'single' | 'married';
   spouseAge?: number;
+  spouseBirthYear?: number;
   spouseLifeExp?: number;
   spouseSsType?: 'own' | 'spousal' | 'combined';  // 'own' = own record only; 'spousal' = 50% of primary PIA; 'combined' = max(own, spousal)
   spouseSs?: number;     // monthly benefit (own record, at claim age)
@@ -17,6 +19,7 @@ export interface InputParams {
   // Accounts
   tradBal: number;
   rothBal: number;
+  rothBasis?: number;
   taxableBal: number;
   taxableBasis?: number;
   hsaBal: number;
@@ -50,10 +53,16 @@ export interface InputParams {
   convStart: number;
   convUntil: number;
   targetConvBracket: 0 | 1 | 2 | 3; // 0=10%, 1=12%, 2=22%, 3=24%
+  qcdAnnual: number;
+  qcdStartAge: number;
+  useJointLifeRmd: boolean;
 
   // Returns (nominal)
   r: number; // traditional/roth return
   taxableReturn: number;
+  taxableOrdinaryYield: number;
+  taxableQualifiedDividendYield: number;
+  taxableRealizedGainYield: number;
   hsaReturn: number;
 
   // Inflation
@@ -65,6 +74,10 @@ export interface InputParams {
 
   // Assumptions
   includeIRMAA: boolean;
+  includeMedicarePremiums: boolean;
+  includeAcaPremiumCredits: boolean;
+  acaMonthlyPremium: number;
+  acaMonthlyCredit: number;
   includeStateTax: boolean;
   ssCOLA: number; // Social Security cost of living adjustment
 
@@ -122,6 +135,7 @@ export interface ProjectionRow {
   total: number;
   // Income sources
   rmd: number;
+  qcd: number;
   conv: number;
   tradW: number;      // traditional withdrawal for spending
   rothW: number;      // roth withdrawal for spending

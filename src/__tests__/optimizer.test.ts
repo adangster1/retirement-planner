@@ -42,13 +42,23 @@ const BASE: InputParams = {
   convStart: 62,
   convUntil: 72,
   targetConvBracket: 1,
+  qcdAnnual: 0,
+  qcdStartAge: 70,
+  useJointLifeRmd: false,
   r: 0.07,
   taxableReturn: 0.07,
+  taxableOrdinaryYield: 0,
+  taxableQualifiedDividendYield: 0.015,
+  taxableRealizedGainYield: 0,
   hsaReturn: 0.07,
   inf: 0.03,
   stateTaxRate: 0,
   stateTaxBrackets: undefined,
   includeIRMAA: true,
+  includeMedicarePremiums: false,
+  includeAcaPremiumCredits: false,
+  acaMonthlyPremium: 0,
+  acaMonthlyCredit: 0,
   includeStateTax: false,
   ssCOLA: 0.025,
 };
@@ -82,7 +92,7 @@ describe('runOptimizer', () => {
   });
 
   it('bestByPortfolio has terminal total >= baseline', () => {
-    expect(opt.bestByPortfolio.terminalTotal).toBeGreaterThanOrEqual(opt.baseline.terminalTotal);
+    expect(opt.bestByPortfolio.terminalAfterTax).toBeGreaterThanOrEqual(opt.baseline.terminalAfterTax);
   });
 
   it('bestByPeakRate has peak marginal rate <= baseline', () => {

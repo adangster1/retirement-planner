@@ -117,6 +117,20 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
               {numInput(inputs.rothBal, 5000, undefined, v => onInputChange('rothBal', v))}
             </div>
           </div>
+          <div className="field">
+            <TipLabel text="Roth basis ($)" />
+            <input
+              type="number"
+              value={inputs.rothBasis ?? ''}
+              step={5000}
+              placeholder={`${inputs.rothBal} (all basis)`}
+              style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '3px', width: '100%' }}
+              onInput={(e) => {
+                const raw = (e.target as HTMLInputElement).value;
+                onInputChange('rothBasis', raw === '' ? undefined as any : Number(raw));
+              }}
+            />
+          </div>
           <div className="two-col">
             <div className="field">
               <TipLabel text="Taxable ($)" />
@@ -423,6 +437,11 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
         {rateSlider('Annual return (%)', 'r', inputs.r, 1, 12, 0.5, 1)}
         {rateSlider('Taxable account return (%)', 'taxableReturn', inputs.taxableReturn, 1, 12, 0.5, 1)}
         {rateSlider('Inflation (%)', 'inf', inputs.inf, 1, 6, 0.5, 1)}
+      </div>
+      <div style={{ display: 'flex', gap: '1.5rem', padding: '10px 14px', background: '#F8F9FA', border: '1px solid #E8E8E8', borderRadius: '6px', marginBottom: '1.2rem' }}>
+        {rateSlider('Taxable ordinary yield (%)', 'taxableOrdinaryYield', inputs.taxableOrdinaryYield ?? 0, 0, 8, 0.25, 2)}
+        {rateSlider('Qualified dividend yield (%)', 'taxableQualifiedDividendYield', inputs.taxableQualifiedDividendYield ?? 0, 0, 8, 0.25, 2)}
+        {rateSlider('Realized LTCG yield (%)', 'taxableRealizedGainYield', inputs.taxableRealizedGainYield ?? 0, 0, 8, 0.25, 2)}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
