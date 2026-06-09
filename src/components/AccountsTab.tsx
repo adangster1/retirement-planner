@@ -26,22 +26,22 @@ const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString();
 
 const inputStyle: React.CSSProperties = {
-  padding: '3px 5px', fontSize: '11px', border: '1px solid #ccc',
-  borderRadius: '3px', width: '100%',
+  padding: '5px 7px', fontSize: '12px', border: '1px solid var(--border-strong)',
+  borderRadius: '6px', width: '100%', background: 'var(--panel-3)', color: 'var(--text)',
 };
 const btnStyle = (color: string): React.CSSProperties => ({
-  padding: '2px 8px', fontSize: '11px', background: color, color: '#fff',
-  border: 'none', borderRadius: '3px', cursor: 'pointer', whiteSpace: 'nowrap',
+  padding: '4px 9px', fontSize: '11px', background: color, color: '#fff',
+  border: 'none', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
 });
 
 const subTabBtn = (active: boolean): React.CSSProperties => ({
-  padding: '4px 18px',
-  fontSize: '12px',
+  padding: '7px 18px',
+  fontSize: '13px',
   fontWeight: 600,
-  border: active ? '2px solid #1A5276' : '1px solid #ccc',
-  borderRadius: '4px',
-  background: active ? '#EAF4FB' : '#fff',
-  color: active ? '#1A5276' : '#666',
+  border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+  borderRadius: '8px',
+  background: active ? 'rgba(103,212,197,0.14)' : 'var(--panel-2)',
+  color: active ? 'var(--accent)' : 'var(--text-muted)',
   cursor: 'pointer',
 });
 
@@ -51,7 +51,7 @@ const numInput = (value: number | undefined, step: number, placeholder: string |
     value={value ?? ''}
     step={step}
     placeholder={placeholder}
-    style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '3px', width: '100%' }}
+    style={{ padding: '0.78rem 0.9rem', fontSize: '16px', border: '1px solid var(--border-strong)', borderRadius: '11px', width: '100%', background: 'var(--panel-3)', color: 'var(--text)' }}
     onInput={(e) => onChange(Number((e.target as HTMLInputElement).value) || 0)}
   />
 );

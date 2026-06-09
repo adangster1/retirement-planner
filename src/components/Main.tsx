@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { InputParams, ProjectionRow, Account, PlannerPage } from '../types';
 import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } from '../monteCarlo';
+import { spouseSsAt } from '../financial';
 import { ExpenseTab } from './ExpenseTab';
 import { AccountsTab } from './AccountsTab';
 import Sidebar from './Sidebar';
@@ -77,6 +78,8 @@ const fmt = (n: number): string => {
 };
 
 const pct = (n: number): string => (n * 100).toFixed(1) + '%';
+const CHART_TICK = '#8D99A6';
+const CHART_GRID = 'rgba(141,153,166,0.16)';
 
 type OptimizerGoal = 'tax' | 'portfolio' | 'peakrate' | 'greedy';
 type MonteCarloPreset = 'base' | 'stress';
@@ -118,6 +121,61 @@ const Main: React.FC<MainProps> = ({
   const [optimizerGoal, setOptimizerGoal] = useState<OptimizerGoal>('tax');
   const allRows = rows.slice(1); // all years from current age onward (skip y=0 initial state)
   const getSalary = (r: ProjectionRow) => r.age < inputs.retireAge ? (inputs.salary ?? 0) : 0;
+  const pageSection = (['about', 'social', 'conversions', 'accounts', 'expenses'] as PlannerPage[]).includes(activeTab)
+    ? 'Setup'
+    : (['optimizer', 'mc'] as PlannerPage[]).includes(activeTab)
+      ? 'Tools'
+      : 'Results';
+  const pageTitles: Record<PlannerPage, string> = {
+    about: 'About You',
+    social: 'Social Security',
+    conversions: 'Roth Conversions',
+    accounts: 'Accounts',
+    expenses: 'Expenses',
+    balance: 'Balances',
+    income: 'Income',
+    rmd: 'RMDs & Conversions',
+    tax: 'Tax Analysis',
+    cashflow: 'Cash Flow',
+    optimizer: 'Roth Optimizer',
+    mc: 'Monte Carlo',
+  };
+  const yearsUntilRetirement = Math.max(0, inputs.retireAge - inputs.age);
+  const horizonEndAge = Math.max(
+    inputs.lifeExp,
+    inputs.spouseAge !== undefined && inputs.spouseLifeExp !== undefined
+      ? inputs.age + (inputs.spouseLifeExp - inputs.spouseAge)
+      : inputs.lifeExp,
+  );
+  const yearsInRetirement = Math.max(0, horizonEndAge - inputs.retireAge);
+  const primarySsMonthly = inputs.ss;
+  const spouseClaimAge = inputs.spouseSsAge ?? 67;
+  const spouseClaimPrimaryAge = inputs.spouseAge !== undefined
+    ? inputs.age + Math.max(0, spouseClaimAge - inputs.spouseAge)
+    : inputs.age;
+  const spouseSsAnnualAtClaim = inputs.filingStatus === 'married'
+    ? spouseSsAt(inputs, Math.max(spouseClaimPrimaryAge, inputs.ssAge))
+    : 0;
+  const spouseSsMonthly = Math.round(spouseSsAnnualAtClaim / 12);
+  const totalSsMonthly = primarySsMonthly + spouseSsMonthly;
+  const conversionRows = conversionSchedule
+    ? Object.entries(conversionSchedule)
+      .map(([age, amount]) => ({ age: Number(age), amount }))
+      .sort((a, b) => a.age - b.age)
+    : [];
+  const manualConversionStart = inputs.convStart ?? inputs.retireAge;
+  const manualConversionEnd = inputs.convUntil;
+  const conversionStartAge = conversionRows.length > 0 ? conversionRows[0].age : manualConversionStart;
+  const conversionEndAge = conversionRows.length > 0 ? conversionRows[conversionRows.length - 1].age : manualConversionEnd;
+  const conversionYears = conversionRows.length > 0
+    ? conversionRows.length
+    : Math.max(0, conversionEndAge - conversionStartAge + 1);
+  const conversionMaxAnnual = conversionRows.length > 0
+    ? Math.max(...conversionRows.map(r => r.amount))
+    : inputs.rothConv;
+  const conversionTotal = conversionRows.length > 0
+    ? conversionRows.reduce((sum, row) => sum + row.amount, 0)
+    : conversionMaxAnnual * conversionYears;
   const handleRmdNumberChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
     onInputChange(field, Number((e.target as HTMLInputElement).value) || 0);
   };
@@ -241,8 +299,8 @@ const Main: React.FC<MainProps> = ({
       },
     },
     scales: {
-      x: { ticks: { maxTicksLimit: 10, font: { size: 11 } }, grid: { display: false } },
-      y: { min: 0, ticks: { callback: (v: number | string) => Number(v).toFixed(0) + '%', font: { size: 11 }, maxTicksLimit: 5 }, grid: { color: 'rgba(128,128,128,0.1)' } },
+      x: { ticks: { color: CHART_TICK, maxTicksLimit: 10, font: { size: 11 } }, grid: { display: false } },
+      y: { min: 0, ticks: { color: CHART_TICK, callback: (v: number | string) => Number(v).toFixed(0) + '%', font: { size: 11 }, maxTicksLimit: 5 }, grid: { color: CHART_GRID } },
     },
   } as any);
 
@@ -279,8 +337,8 @@ const Main: React.FC<MainProps> = ({
       },
     },
     scales: {
-      x: { stacked, ticks: { maxTicksLimit: 10, font: { size: 11 } }, grid: { display: false } },
-      y: { stacked, min: yMin, max: yMax, ticks: { callback: (v: number | string) => fmt(Number(v)), font: { size: 11 }, maxTicksLimit: 5 }, grid: { color: 'rgba(128,128,128,0.1)' } },
+      x: { stacked, ticks: { color: CHART_TICK, maxTicksLimit: 10, font: { size: 11 } }, grid: { display: false } },
+      y: { stacked, min: yMin, max: yMax, ticks: { color: CHART_TICK, callback: (v: number | string) => fmt(Number(v)), font: { size: 11 }, maxTicksLimit: 5 }, grid: { color: CHART_GRID } },
     },
   } as any);
 
@@ -416,6 +474,10 @@ const Main: React.FC<MainProps> = ({
 
   return (
     <div className="main">
+      <div className="page-heading">
+        <div className="page-kicker">{pageSection}</div>
+        <div className="page-title">{pageTitles[activeTab]}</div>
+      </div>
       <div className="metrics">
         <div className="metric-card">
           <div className="mlabel">Total at retirement</div>
@@ -439,15 +501,126 @@ const Main: React.FC<MainProps> = ({
         </div>
       </div>
 
-      {(['about', 'social', 'conversions'] as const).includes(activeTab as any) && (
-        <div className="chart-card setup-card">
-          <Sidebar
-            inputs={inputs}
-            onInputChange={onInputChange}
-            conversionSchedule={conversionSchedule}
-            onClearSchedule={onClearSchedule}
-            page={activeTab as 'about' | 'social' | 'conversions'}
-          />
+      {activeTab === 'about' && (
+        <div className="setup-grid">
+          <div className="chart-card setup-card">
+            <Sidebar
+              inputs={inputs}
+              onInputChange={onInputChange}
+              conversionSchedule={conversionSchedule}
+              onClearSchedule={onClearSchedule}
+              page="about"
+            />
+          </div>
+          <div className="chart-card horizon-card">
+            <div className="chart-title">Your horizon</div>
+            <div className="horizon-stat">
+              <div className="detail-label">Years until retirement</div>
+              <div><span className="horizon-number accent">{yearsUntilRetirement}</span><span className="horizon-unit"> yrs</span></div>
+            </div>
+            <div className="horizon-divider" />
+            <div className="horizon-stat">
+              <div className="detail-label">Years in retirement</div>
+              <div><span className="horizon-number">{yearsInRetirement}</span><span className="horizon-unit"> yrs</span></div>
+            </div>
+            <div className="horizon-track" aria-hidden="true">
+              <span style={{ flexGrow: Math.max(1, yearsUntilRetirement) }} />
+              <span style={{ flexGrow: Math.max(1, yearsInRetirement) }} />
+            </div>
+            <div className="note">
+              Retiring at <strong>{inputs.retireAge}</strong>, planning through <strong>{horizonEndAge}</strong>, filing <strong>{inputs.filingStatus === 'married' ? 'jointly' : 'single'}</strong>.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'social' && (
+        <div className="social-grid">
+          <div className="chart-card setup-card">
+            <Sidebar
+              inputs={inputs}
+              onInputChange={onInputChange}
+              conversionSchedule={conversionSchedule}
+              onClearSchedule={onClearSchedule}
+              page="social"
+            />
+          </div>
+          <div className="chart-card ss-glance-card">
+            <div className="chart-title">Benefits at a glance</div>
+            <div className="ss-total">
+              <span>{fmt(totalSsMonthly * 12)}</span>
+              <span> / yr</span>
+            </div>
+            <div className="note" style={{ marginTop: 0 }}>
+              {fmt(totalSsMonthly)} / month at the chosen claim ages
+            </div>
+            <div className="ss-benefit-list">
+              <div className="ss-benefit-row">
+                <span className="ss-dot primary" />
+                <span>You · claim {inputs.ssAge}</span>
+                <strong>{fmt(primarySsMonthly)}/mo</strong>
+              </div>
+              {inputs.filingStatus === 'married' && (
+                <div className="ss-benefit-row">
+                  <span className="ss-dot spouse" />
+                  <span>Spouse · claim {spouseClaimAge}</span>
+                  <strong>{fmt(spouseSsMonthly)}/mo</strong>
+                </div>
+              )}
+            </div>
+            <div className="horizon-divider" />
+            <div className="note">
+              COLA of <strong>{((inputs.ssCOLA ?? 0.025) * 100).toFixed(2)}%</strong> is applied each year after benefits begin.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'conversions' && (
+        <div className="conversion-grid">
+          <div>
+            <div className="chart-card setup-card">
+              <Sidebar
+                inputs={inputs}
+                onInputChange={onInputChange}
+                conversionSchedule={conversionSchedule}
+                onClearSchedule={onClearSchedule}
+                page="conversions"
+              />
+            </div>
+            <div className="callout conversion-callout">
+              Converting traditional balances to Roth before RMDs begin fills lower brackets early and shrinks future required distributions. See <strong>Roth Optimizer</strong> to compare strategies, or set a manual schedule here.
+            </div>
+          </div>
+          <div className="chart-card conversion-window-card">
+            <div className="chart-title">Conversion window</div>
+            <div className="ss-total">
+              <span>{fmt(conversionTotal)}</span>
+            </div>
+            <div className="note" style={{ marginTop: 0 }}>
+              {conversionSchedule ? 'scheduled conversions' : `max converted over ${conversionYears} year${conversionYears === 1 ? '' : 's'}`}
+            </div>
+            <div className="window-list">
+              <div className="window-row">
+                <span>From age</span>
+                <strong>{conversionYears > 0 ? conversionStartAge : '—'}</strong>
+              </div>
+              <div className="window-row">
+                <span>Until age</span>
+                <strong>{conversionYears > 0 ? conversionEndAge : '—'}</strong>
+              </div>
+              <div className="window-row">
+                <span>Max / year</span>
+                <strong>{conversionMaxAnnual > 0 ? fmt(conversionMaxAnnual) : '—'}</strong>
+              </div>
+              {conversionSchedule && (
+                <div className="window-row">
+                  <span>Mode</span>
+                  <strong>Optimizer</strong>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

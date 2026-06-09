@@ -469,46 +469,7 @@ const App: React.FC = () => {
   return (
     <div className="app">
       <div className="header">
-        {/* Plan controls — left */}
-        <div className="plan-menu">
-          <button
-            className={`plan-trigger ${planMenuOpen ? 'open' : ''}`}
-            onClick={() => setPlanMenuOpen(open => !open)}
-            aria-haspopup="menu"
-            aria-expanded={planMenuOpen}
-          >
-            <span className="plan-trigger-dot" />
-            <span>
-              <span className="plan-trigger-label">Active plan</span>
-              <span className="plan-trigger-name">{activePlan.name}</span>
-            </span>
-            <span className="plan-trigger-chevron">{planMenuOpen ? '⌃' : '⌄'}</span>
-          </button>
-          {planMenuOpen && (
-            <div className="plan-dropdown" role="menu">
-              <div className="plan-list">
-                {plans.map(plan => (
-                  <button
-                    key={plan.id}
-                    className={`plan-row ${plan.id === activePlanId ? 'active' : ''}`}
-                    onClick={() => { setActivePlanId(plan.id); setPlanMenuOpen(false); }}
-                  >
-                    <span className="plan-row-dot" />
-                    <span>{plan.name}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="plan-menu-divider" />
-              <button className="plan-action" onClick={addPlan}>New plan</button>
-              <button className="plan-action" onClick={renamePlan}>Rename plan</button>
-              <button className="plan-action" onClick={duplicatePlan}>Duplicate plan</button>
-              <button className="plan-action" onClick={resetPlan}>Reset to defaults</button>
-              <button className="plan-action danger" onClick={deletePlan} disabled={plans.length <= 1}>Delete plan</button>
-            </div>
-          )}
-        </div>
-
-        {/* File I/O — right */}
+        <div />
         <div className="file-actions">
           <label className="file-import">
             <span className="file-icon">⇧</span>
@@ -547,6 +508,47 @@ const App: React.FC = () => {
       </div>
 
       <nav className="left-nav">
+        <div className="brand">
+          <span className="brand-mark"><span /></span>
+          <span>Retirement Planner</span>
+        </div>
+        <div className="plan-menu">
+          <button
+            className={`plan-trigger ${planMenuOpen ? 'open' : ''}`}
+            onClick={() => setPlanMenuOpen(open => !open)}
+            aria-haspopup="menu"
+            aria-expanded={planMenuOpen}
+          >
+            <span className="plan-trigger-dot" />
+            <span>
+              <span className="plan-trigger-label">Active plan</span>
+              <span className="plan-trigger-name">{activePlan.name}</span>
+            </span>
+            <span className="plan-trigger-chevron">{planMenuOpen ? '⌃' : '⌄'}</span>
+          </button>
+          {planMenuOpen && (
+            <div className="plan-dropdown" role="menu">
+              <div className="plan-list">
+                {plans.map(plan => (
+                  <button
+                    key={plan.id}
+                    className={`plan-row ${plan.id === activePlanId ? 'active' : ''}`}
+                    onClick={() => { setActivePlanId(plan.id); setPlanMenuOpen(false); }}
+                  >
+                    <span className="plan-row-dot" />
+                    <span>{plan.name}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="plan-menu-divider" />
+              <button className="plan-action" onClick={addPlan}>New plan</button>
+              <button className="plan-action" onClick={renamePlan}>Rename plan</button>
+              <button className="plan-action" onClick={duplicatePlan}>Duplicate plan</button>
+              <button className="plan-action" onClick={resetPlan}>Reset to defaults</button>
+              <button className="plan-action danger" onClick={deletePlan} disabled={plans.length <= 1}>Delete plan</button>
+            </div>
+          )}
+        </div>
         {(['SETUP', 'RESULTS', 'TOOLS'] as const).map(section => (
           <div key={section} className="nav-section">
             <div className="nav-section-label">{section}</div>
@@ -562,6 +564,7 @@ const App: React.FC = () => {
             ))}
           </div>
         ))}
+        <div className="privacy-note">100% local. Your numbers never leave the browser.</div>
       </nav>
       <Main
         inputs={inputs}
