@@ -8,7 +8,7 @@ interface SidebarProps {
   onInputChange: (field: keyof InputParams, value: string | number | boolean) => void;
   conversionSchedule: Record<number, number> | null;
   onClearSchedule: () => void;
-  page?: 'about' | 'social' | 'conversions' | 'taxsettings';
+  page?: 'about' | 'social' | 'conversions';
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSchedule, onClearSchedule, page }) => {
@@ -466,68 +466,6 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                 <option value={2}>22% bracket</option>
                 <option value={3}>24% bracket</option>
               </select>
-            </div>
-          </>
-        )}
-      </div>}
-
-      {showAll && <hr className="divider" />}
-
-      {/* Tax */}
-      {(showAll || page === 'taxsettings') && <div>
-        <div className="section-label">Tax settings</div>
-        <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <input type="checkbox" checked={inputs.includeIRMAA}
-            onChange={(e) => handleCheckboxChange('includeIRMAA', e)} />
-          <TipLabel text="Include IRMAA surcharges" />
-        </div>
-        <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <input type="checkbox" checked={inputs.includeMedicarePremiums}
-            onChange={(e) => handleCheckboxChange('includeMedicarePremiums', e)} />
-          <TipLabel text="Include Medicare base premiums" />
-        </div>
-        <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <input type="checkbox" checked={inputs.includeAcaPremiumCredits}
-            onChange={(e) => handleCheckboxChange('includeAcaPremiumCredits', e)} />
-          <TipLabel text="Include ACA premiums/credits" />
-        </div>
-        {inputs.includeAcaPremiumCredits && (
-          <div className="two-col">
-            <div className="field">
-              <TipLabel text="ACA premium ($/mo)" />
-              <input type="number" value={inputs.acaMonthlyPremium} step={50}
-                onInput={(e) => handleNumberChange('acaMonthlyPremium', e)} />
-            </div>
-            <div className="field">
-              <TipLabel text="ACA credit ($/mo)" />
-              <input type="number" value={inputs.acaMonthlyCredit} step={50}
-                onInput={(e) => handleNumberChange('acaMonthlyCredit', e)} />
-            </div>
-          </div>
-        )}
-        <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <input type="checkbox" checked={inputs.includeStateTax}
-            onChange={(e) => handleCheckboxChange('includeStateTax', e)} />
-          <TipLabel text="Include state tax" />
-        </div>
-        {inputs.includeStateTax && (
-          <>
-            <div className="field">
-              <TipLabel text="State tax rate (%)" />
-              <div className="range-row">
-                <input type="range" min={0} max={13} value={inputs.stateTaxRate * 100} step={0.25}
-                  onInput={(e) => handleRateChange('stateTaxRate', e)} />
-                <span className="range-val">{(inputs.stateTaxRate * 100).toFixed(2)}%</span>
-              </div>
-            </div>
-            <div className="field">
-              <TipLabel text="State tax brackets JSON" />
-              <textarea
-                value={inputs.stateTaxBrackets ?? ''}
-                placeholder="[[10000,0.01],[50000,0.03],[null,0.05]]"
-                style={{ width: '100%', minHeight: 54, fontSize: 11, fontFamily: 'monospace', padding: '4px 6px', border: '1px solid #ccc', borderRadius: 3 }}
-                onInput={(e) => onInputChange('stateTaxBrackets', (e.target as HTMLTextAreaElement).value || undefined as any)}
-              />
             </div>
           </>
         )}

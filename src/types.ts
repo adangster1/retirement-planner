@@ -193,7 +193,6 @@ export type PlannerPage =
   | 'about'
   | 'social'
   | 'conversions'
-  | 'taxsettings'
   | 'accounts'
   | 'expenses'
   | 'balance'

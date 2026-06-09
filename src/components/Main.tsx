@@ -124,6 +124,12 @@ const Main: React.FC<MainProps> = ({
   const handleRmdRangeChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
     onInputChange(field, Number((e.target as HTMLInputElement).value));
   };
+  const handleTaxNumberChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
+    onInputChange(field, Number((e.target as HTMLInputElement).value) || 0);
+  };
+  const handleTaxRateChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
+    onInputChange(field, Number((e.target as HTMLInputElement).value) / 100);
+  };
 
   // Rows past the primary's life expectancy are spouse-only survivor years
   const survivorRowStyle = (r: ProjectionRow, base?: React.CSSProperties): React.CSSProperties => {
@@ -433,14 +439,14 @@ const Main: React.FC<MainProps> = ({
         </div>
       </div>
 
-      {(['about', 'social', 'conversions', 'taxsettings'] as const).includes(activeTab as any) && (
+      {(['about', 'social', 'conversions'] as const).includes(activeTab as any) && (
         <div className="chart-card setup-card">
           <Sidebar
             inputs={inputs}
             onInputChange={onInputChange}
             conversionSchedule={conversionSchedule}
             onClearSchedule={onClearSchedule}
-            page={activeTab as 'about' | 'social' | 'conversions' | 'taxsettings'}
+            page={activeTab as 'about' | 'social' | 'conversions'}
           />
         </div>
       )}
@@ -585,113 +591,275 @@ const Main: React.FC<MainProps> = ({
         </div>
       )}
 
-      {activeTab === 'rmd' && (
-        <div className="chart-card">
-          <div className="chart-title">RMDs and Roth conversions</div>
-          <div className="detail-panel" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>
-            <div className="detail-section-title" style={{ marginTop: 0 }}>RMD strategy settings</div>
-            <div className="two-col">
-              <div className="field">
-                <TipLabel text="Annual QCD ($)" />
-                <input
-                  type="number"
-                  value={inputs.qcdAnnual}
-                  step={1000}
-                  onInput={(e) => handleRmdNumberChange('qcdAnnual', e)}
-                />
-              </div>
-              {inputs.qcdAnnual > 0 && (
-                <div className="field">
-                  <TipLabel text="QCD start age" />
-                  <div className="range-row">
-                    <input
-                      type="range"
-                      min={70}
-                      max={100}
-                      value={inputs.qcdStartAge}
-                      step={1}
-                      onInput={(e) => handleRmdRangeChange('qcdStartAge', e)}
-                    />
-                    <span className="range-val">{inputs.qcdStartAge}</span>
+      {activeTab === 'rmd' && (() => {
+        const rmdRows = allRows.filter(r => r.rmd > 0 || r.qcd > 0 || r.conv > 0);
+        const firstRmd = allRows.find(r => r.rmd > 0);
+        const peakRmd = allRows.reduce((mx, r) => r.rmd > mx.rmd ? r : mx, allRows[0]);
+        const peakConv = allRows.reduce((mx, r) => r.conv > mx.conv ? r : mx, allRows[0]);
+        const tableRows = rmdRows.length > 0 ? rmdRows : allRows.filter((_, i) => i % 5 === 0);
+
+        return (
+          <div className="chart-card">
+            <div className="chart-title">RMDs and Roth conversions</div>
+            <div className="rmd-layout">
+              <div className="rmd-main-panel">
+                <div className="rmd-summary">
+                  <div>
+                    <div className="detail-label">RMDs begin</div>
+                    <div className="rmd-summary-value">{firstRmd ? `age ${firstRmd.age}` : 'None'}</div>
+                  </div>
+                  <div>
+                    <div className="detail-label">Peak RMD</div>
+                    <div className="rmd-summary-value accent">{peakRmd?.rmd > 0 ? `${fmt(peakRmd.rmd)}/yr` : 'None'}</div>
+                  </div>
+                  <div>
+                    <div className="detail-label">At age</div>
+                    <div className="rmd-summary-value">{peakRmd?.rmd > 0 ? peakRmd.age : '—'}</div>
+                  </div>
+                  <div>
+                    <div className="detail-label">Peak conversion</div>
+                    <div className="rmd-summary-value">{peakConv?.conv > 0 ? fmt(peakConv.conv) : 'None'}</div>
                   </div>
                 </div>
-              )}
-            </div>
-            {inputs.useJointLifeRmd && (
-              <div className="note" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
-                Joint life RMD estimate is enabled from About You, which can reduce RMDs when a spouse is more than 10 years younger.
+                <div className="legend">
+                  <span className="li"><span className="ls" style={{ background: '#BA7517' }}></span>RMD required</span>
+                  <span className="li"><span className="ls" style={{ background: '#378ADD' }}></span>Roth conversion</span>
+                </div>
+                <div style={{ position: 'relative', width: '100%', height: '300px' }}>
+                  <Bar data={rmdData()} options={baseOpts(true)} />
+                </div>
               </div>
-            )}
+
+              <div className="rmd-side-panel">
+                <div className="rmd-options-card">
+                  <div className="chart-title">RMD options</div>
+                  <div className="field">
+                    <TipLabel text="Annual QCD ($)" />
+                    <input
+                      type="number"
+                      value={inputs.qcdAnnual}
+                      step={1000}
+                      onInput={(e) => handleRmdNumberChange('qcdAnnual', e)}
+                    />
+                  </div>
+                  {inputs.qcdAnnual > 0 && (
+                    <div className="field">
+                      <TipLabel text="QCD start age" />
+                      <div className="range-row">
+                        <input
+                          type="range"
+                          min={70}
+                          max={100}
+                          value={inputs.qcdStartAge}
+                          step={1}
+                          onInput={(e) => handleRmdRangeChange('qcdStartAge', e)}
+                        />
+                        <span className="range-val">{inputs.qcdStartAge}</span>
+                      </div>
+                    </div>
+                  )}
+                  {inputs.useJointLifeRmd && (
+                    <div className="note" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
+                      Joint life RMD estimate is enabled from About You.
+                    </div>
+                  )}
+                </div>
+
+                <div className="rmd-options-card">
+                  <div className="chart-title">By year</div>
+                  <div className="optimizer-table-wrap rmd-year-table">
+                    <table className="optimizer-table opt-schedule-table">
+                      <thead>
+                        <tr>
+                          <th>Age</th>
+                          <th>RMD</th>
+                          <th>QCD</th>
+                          <th>Conversion</th>
+                          <th>Trad. left</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tableRows.map(r => (
+                          <tr key={r.age} style={survivorRowStyle(r)}>
+                            <td>{r.age}<SurvivorTag age={r.age} /></td>
+                            <td>{r.rmd > 0 ? fmt(r.rmd) : '—'}</td>
+                            <td>{r.qcd > 0 ? fmt(r.qcd) : '—'}</td>
+                            <td>{r.conv > 0 ? fmt(r.conv) : '—'}</td>
+                            <td>{fmt(r.trad)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {renderRMDDetail()}
           </div>
-          <div className="legend">
-            <span className="li"><span className="ls" style={{ background: '#BA7517' }}></span>RMD required</span>
-            <span className="li"><span className="ls" style={{ background: '#378ADD' }}></span>Roth conversion</span>
-          </div>
-          <div style={{ position: 'relative', width: '100%', height: '280px' }}>
-            <Bar data={rmdData()} options={baseOpts(true)} />
-          </div>
-          {renderRMDDetail()}
-        </div>
-      )}
+        );
+      })()}
 
       {activeTab === 'tax' && (
         <div className="chart-card">
           <div className="chart-title">Tax analysis over retirement</div>
 
-          <div className="chart-subtitle" style={{ marginTop: '0.25rem' }}>Tax rates</div>
-          <div className="legend">
-            <span className="li"><span className="ls" style={{ background: '#E74C3C' }}></span>Marginal rate</span>
-            <span className="li"><span className="ls" style={{ background: '#3498DB' }}></span>Effective rate</span>
-          </div>
-          <div style={{ position: 'relative', width: '100%', height: '180px' }}>
-            <Line data={taxRateData()} options={rateOpts()} />
-          </div>
-
-          <div className="chart-subtitle" style={{ marginTop: '1rem' }}>Tax amounts</div>
-          <div className="legend">
-            <span className="li"><span className="ls" style={{ background: '#E67E22' }}></span>Federal tax</span>
-            <span className="li"><span className="ls" style={{ background: '#27AE60' }}></span>State tax</span>
-            <span className="li"><span className="ls" style={{ background: '#8E44AD', height: '3px', borderRadius: 0, width: '14px' }}></span>IRMAA (B+D)</span>
-          </div>
-          <div style={{ position: 'relative', width: '100%', height: '180px' }}>
-            <Line data={taxDollarData()} options={baseOpts()} />
-          </div>
-          <div className="detail-panel">
-            <div className="detail-grid">
-              <div className="detail-item detail-highlight">
-                <div className="detail-label">Lifetime total tax</div>
-                <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.totalTax, 0))}</div>
-              </div>
-              <div className="detail-item">
-                <div className="detail-label">Federal tax</div>
-                <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.federalTax, 0))}</div>
-              </div>
-              <div className="detail-item">
-                <div className="detail-label">State tax</div>
-                <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.stateTax, 0))}</div>
-              </div>
-              <div className="detail-item">
-                <div className="detail-label">IRMAA (Part B + D)</div>
-                <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0))}</div>
-              </div>
-              <div className="detail-item">
-                <div className="detail-label">Avg marginal rate</div>
-                <div className="detail-value">{pct(allRows.reduce((s, r) => s + r.marginalRate, 0) / Math.max(1, allRows.length))}</div>
-              </div>
-              <div className="detail-item">
-                <div className="detail-label">Peak marginal rate</div>
-                <div className="detail-value">{pct(Math.max(...allRows.map(r => r.marginalRate)))}</div>
-              </div>
-              <div className="detail-item">
-                <div className="detail-label">Avg taxable SS %</div>
-                <div className="detail-value">
-                  {(() => {
-                    const withSS = allRows.filter(r => r.ss > 0);
-                    if (withSS.length === 0) return 'N/A';
-                    return pct(withSS.reduce((s, r) => s + r.ssTaxable / Math.max(1, r.ss + r.spouseSs), 0) / withSS.length);
-                  })()}
+          <div className="tax-layout">
+            <div className="tax-main-panel">
+              <div className="chart-subtitle" style={{ marginTop: 0 }}>Tax rates over time</div>
+              <div className="tax-summary">
+                <div>
+                  <div className="detail-label">Lifetime taxes</div>
+                  <div className="rmd-summary-value">{fmt(allRows.reduce((s, r) => s + r.totalTax, 0))}</div>
+                </div>
+                <div>
+                  <div className="detail-label">Peak marginal rate</div>
+                  <div className="rmd-summary-value accent">{pct(Math.max(...allRows.map(r => r.marginalRate)))}</div>
+                </div>
+                <div>
+                  <div className="detail-label">Avg effective</div>
+                  <div className="rmd-summary-value">{pct(allRows.reduce((s, r) => s + r.effectiveRate, 0) / Math.max(1, allRows.length))}</div>
                 </div>
               </div>
+              <div className="legend">
+                <span className="li"><span className="ls" style={{ background: '#E74C3C' }}></span>Marginal rate</span>
+                <span className="li"><span className="ls" style={{ background: '#3498DB' }}></span>Effective rate</span>
+              </div>
+              <div style={{ position: 'relative', width: '100%', height: '240px' }}>
+                <Line data={taxRateData()} options={rateOpts()} />
+              </div>
+
+              <div className="chart-subtitle" style={{ marginTop: '1rem' }}>Tax amounts</div>
+              <div className="legend">
+                <span className="li"><span className="ls" style={{ background: '#E67E22' }}></span>Federal tax</span>
+                <span className="li"><span className="ls" style={{ background: '#27AE60' }}></span>State tax</span>
+                <span className="li"><span className="ls" style={{ background: '#8E44AD', height: '3px', borderRadius: 0, width: '14px' }}></span>IRMAA (B+D)</span>
+              </div>
+              <div style={{ position: 'relative', width: '100%', height: '180px' }}>
+                <Line data={taxDollarData()} options={baseOpts()} />
+              </div>
+              <div className="detail-panel">
+                <div className="detail-grid">
+                  <div className="detail-item">
+                    <div className="detail-label">Federal tax</div>
+                    <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.federalTax, 0))}</div>
+                  </div>
+                  <div className="detail-item">
+                    <div className="detail-label">State tax</div>
+                    <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.stateTax, 0))}</div>
+                  </div>
+                  <div className="detail-item">
+                    <div className="detail-label">IRMAA (Part B + D)</div>
+                    <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0))}</div>
+                  </div>
+                  <div className="detail-item">
+                    <div className="detail-label">Avg taxable SS %</div>
+                    <div className="detail-value">
+                      {(() => {
+                        const withSS = allRows.filter(r => r.ss > 0);
+                        if (withSS.length === 0) return 'N/A';
+                        return pct(withSS.reduce((s, r) => s + r.ssTaxable / Math.max(1, r.ss + r.spouseSs), 0) / withSS.length);
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="tax-settings-panel">
+              <div className="chart-title">Tax settings</div>
+              <div className="tax-toggle-row">
+                <div>
+                  <TipLabel text="Include IRMAA surcharges" />
+                  <div className="detail-label">Medicare premium surcharge on higher incomes</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={inputs.includeIRMAA}
+                  onChange={(e) => onInputChange('includeIRMAA', (e.target as HTMLInputElement).checked)}
+                />
+              </div>
+              <div className="tax-toggle-row">
+                <div>
+                  <TipLabel text="Include Medicare base premiums" />
+                  <div className="detail-label">Part B from age 65</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={inputs.includeMedicarePremiums}
+                  onChange={(e) => onInputChange('includeMedicarePremiums', (e.target as HTMLInputElement).checked)}
+                />
+              </div>
+              <div className="tax-toggle-row">
+                <div>
+                  <TipLabel text="Include ACA premiums/credits" />
+                  <div className="detail-label">Pre-Medicare health coverage</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={inputs.includeAcaPremiumCredits}
+                  onChange={(e) => onInputChange('includeAcaPremiumCredits', (e.target as HTMLInputElement).checked)}
+                />
+              </div>
+              {inputs.includeAcaPremiumCredits && (
+                <div className="two-col">
+                  <div className="field">
+                    <TipLabel text="ACA premium ($/mo)" />
+                    <input
+                      type="number"
+                      value={inputs.acaMonthlyPremium}
+                      step={50}
+                      onInput={(e) => handleTaxNumberChange('acaMonthlyPremium', e)}
+                    />
+                  </div>
+                  <div className="field">
+                    <TipLabel text="ACA credit ($/mo)" />
+                    <input
+                      type="number"
+                      value={inputs.acaMonthlyCredit}
+                      step={50}
+                      onInput={(e) => handleTaxNumberChange('acaMonthlyCredit', e)}
+                    />
+                  </div>
+                </div>
+              )}
+              <div className="tax-toggle-row">
+                <div>
+                  <TipLabel text="Include state tax" />
+                  <div className="detail-label">State income tax estimate</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={inputs.includeStateTax}
+                  onChange={(e) => onInputChange('includeStateTax', (e.target as HTMLInputElement).checked)}
+                />
+              </div>
+              {inputs.includeStateTax && (
+                <>
+                  <div className="field">
+                    <TipLabel text="State tax rate (%)" />
+                    <div className="range-row">
+                      <input
+                        type="range"
+                        min={0}
+                        max={13}
+                        value={inputs.stateTaxRate * 100}
+                        step={0.25}
+                        onInput={(e) => handleTaxRateChange('stateTaxRate', e)}
+                      />
+                      <span className="range-val">{(inputs.stateTaxRate * 100).toFixed(2)}%</span>
+                    </div>
+                  </div>
+                  <div className="field">
+                    <TipLabel text="State tax brackets JSON" />
+                    <textarea
+                      value={inputs.stateTaxBrackets ?? ''}
+                      placeholder="[[10000,0.01],[50000,0.03],[null,0.05]]"
+                      style={{ width: '100%', minHeight: 54, fontSize: 11, fontFamily: 'monospace', padding: '4px 6px', border: '1px solid #ccc', borderRadius: 6 }}
+                      onInput={(e) => onInputChange('stateTaxBrackets', (e.target as HTMLTextAreaElement).value || undefined as any)}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
