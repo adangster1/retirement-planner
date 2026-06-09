@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { InputParams, ProjectionRow, Account } from '../types';
-import { runProjection } from '../financial';
+import { runMonteCarlo } from '../monteCarlo';
 import { ExpenseTab } from './ExpenseTab';
 import { AccountsTab } from './AccountsTab';
 import { Chart as ChartJS, type ChartData, type ChartOptions } from 'chart.js';
@@ -1221,30 +1221,10 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
 
       {activeTab === 'mc' && (() => {
         const N = 1000;
-        const years = allRows.length;
-
-        // Run all simulations in one pass, tracking balance at each year
-        const balsByYear: number[][] = Array.from({ length: years }, () => []);
-        for (let sim = 0; sim < N; sim++) {
-          const randReturn = inputs.r + (Math.random() + Math.random() + Math.random() - 1.5) * 0.15;
-          const simRows = runProjection(inputs, randReturn, conversionSchedule ?? undefined).slice(1);
-          for (let y = 0; y < years; y++) {
-            balsByYear[y].push(simRows[y]?.total ?? 0);
-          }
-        }
-
-        const ptile = (arr: number[], p: number) => {
-          const s = [...arr].sort((a, b) => a - b);
-          return s[Math.max(0, Math.floor(p * s.length) - 1)];
-        };
-
-        const successRates = balsByYear.map(ys => Math.round((ys.filter(v => v > 0).length / N) * 100));
-        const p10 = balsByYear.map(ys => ptile(ys, 0.10));
-        const p25 = balsByYear.map(ys => ptile(ys, 0.25));
-        const p50 = balsByYear.map(ys => ptile(ys, 0.50));
-        const p75 = balsByYear.map(ys => ptile(ys, 0.75));
-        const p90 = balsByYear.map(ys => ptile(ys, 0.90));
-        const labels = allRows.map(r => String(r.age));
+        const mc = runMonteCarlo(inputs, conversionSchedule, N);
+        const successRates = mc.successRates;
+        const { p10, p25, p50, p75, p90 } = mc.percentiles;
+        const labels = mc.labels.map(String);
 
         const finalSR = successRates[successRates.length - 1] ?? 0;
         const medianFinal = p50[p50.length - 1] ?? 0;
@@ -1341,10 +1321,10 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
             </div>
 
             <div className="note" style={{ marginTop: '0.75rem' }}>
-              <strong>How this works:</strong> Each simulation reruns the full projection engine with the same spending, taxes, Social Security, RMDs, conversions, and account rules, but with a different randomized annual return assumption around {pct(inputs.r)}.
+              <strong>How this works:</strong> Each simulation reruns the full projection engine with the same spending, taxes, Social Security, RMDs, conversions, and account rules, but with a different year-by-year path for portfolio returns, taxable returns, HSA returns, inflation, healthcare inflation, expense inflation, and Social Security COLA.
               <br /><strong>Success</strong> = portfolio still has money at that age.
               <strong> Percentiles</strong> show the spread of outcomes — "Worst 10%" means 9 out of 10 simulations did better than this number.
-              Only the annual return assumption is randomized; spending shocks, year-by-year return sequences, and inflation variability are not modeled.
+              Spending shocks and asset-class correlations are not modeled yet.
             </div>
           </div>
         );

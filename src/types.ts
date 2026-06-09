@@ -171,6 +171,24 @@ export interface ProjectionRow {
   portfolioValue: number;
 }
 
+export interface ScenarioYear {
+  age: number;
+  portfolioReturn?: number;
+  taxableReturn?: number;
+  hsaReturn?: number;
+  inflation?: number;
+  expenseInflation?: number;
+  healthcareInflation?: number;
+  ssCOLA?: number;
+  spendingShock?: number;
+}
+
+export interface ProjectionOptions {
+  returnRate?: number;
+  conversionSchedule?: Record<number, number>;
+  scenarioPath?: ScenarioYear[];
+}
+
 export interface TaxBreakdown {
   brackets: Array<{
     bracket: string;

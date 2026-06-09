@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { InputParams, ProjectionRow, Account } from './types';
 import { fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, runProjection, fmt, ssInterpolate } from './financial';
+import { runMonteCarlo } from './monteCarlo';
 import { runOptimizer } from './optimizer';
 import type { OptimizationOutput } from './optimizer';
 import { exportToSpreadsheet } from './exportSpreadsheet';
@@ -225,15 +226,7 @@ const App: React.FC = () => {
     const lastRow = projectionRows[projectionRows.length - 1];
     const m4 = lastRow ? fmt(lastRow.total) : '—';
 
-    const MC_N = 1000;
-    let mcSuccesses = 0;
-    for (let sim = 0; sim < MC_N; sim++) {
-      const randReturn = inputs.r + (Math.random() + Math.random() + Math.random() - 1.5) * 0.15;
-      const simRows = runProjection(inputs, randReturn, conversionSchedule ?? undefined);
-      const failed = simRows.slice(retireIn).some(r => r.total <= 0);
-      if (!failed) mcSuccesses++;
-    }
-    const m5 = `${Math.round((mcSuccesses / MC_N) * 100)}%`;
+    const m5 = `${runMonteCarlo(inputs, conversionSchedule, 1000).finalSuccessRate}%`;
 
     setMetrics({ m1, m2, m3, m4, m5 });
   }, [inputs, conversionSchedule]);

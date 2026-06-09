@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { estimateConfiguredStateTax, estimateTax, fullRetirementAge, runProjection, ssInterpolate, taxInflFactor } from '../financial';
+import { buildScenarioPath } from '../monteCarlo';
 import type { InputParams } from '../types';
 
 const BASE: InputParams = {
@@ -81,6 +82,52 @@ describe('runProjection', () => {
     expect(rows.length).toBe(BASE.lifeExp - BASE.age + 1);
     expect(rows[0].age).toBe(BASE.age);
     expect(rows[rows.length - 1].age).toBe(BASE.lifeExp);
+  });
+
+  it('applies scenario-path returns year by year', () => {
+    const params = {
+      ...BASE,
+      age: 55,
+      retireAge: 58,
+      lifeExp: 57,
+      tradBal: 100000,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      tradContrib: 0,
+      rothContrib: 0,
+      taxableContrib: 0,
+      hsaContrib: 0,
+      employerMatch: 0,
+      ss: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+    };
+
+    const rows = runProjection(params, {
+      returnRate: 0,
+      scenarioPath: [
+        { age: 56, portfolioReturn: 0.10, taxableReturn: 0, hsaReturn: 0 },
+        { age: 57, portfolioReturn: -0.10, taxableReturn: 0, hsaReturn: 0 },
+      ],
+    });
+
+    expect(rows.find(r => r.age === 56)?.trad).toBe(110000);
+    expect(rows.find(r => r.age === 57)?.trad).toBe(99000);
+  });
+
+  it('builds Monte Carlo paths with separate annual return draws', () => {
+    const randomValues = [0, 0.25, 0.5, 0.75, 1];
+    let idx = 0;
+    const spy = vi.spyOn(Math, 'random').mockImplementation(() => randomValues[idx++ % randomValues.length]);
+
+    const path = buildScenarioPath(BASE);
+
+    expect(path.length).toBe(BASE.lifeExp - BASE.age);
+    expect(new Set(path.map(y => y.portfolioReturn)).size).toBeGreaterThan(1);
+    spy.mockRestore();
   });
 
   it('all rows have non-negative portfolio values', () => {

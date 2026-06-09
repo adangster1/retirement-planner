@@ -1,4 +1,4 @@
-import type { InputParams, ProjectionRow } from './types';
+import type { InputParams, ProjectionOptions, ProjectionRow } from './types';
 
 // IRS Uniform Lifetime Table (RMD divisors by age, SECURE 2.0)
 const RMD_FACTORS: Record<number, number> = {
@@ -107,9 +107,9 @@ const IRMAA_PART_D_SURCHARGES = [0, 14.50, 37.50, 60.40, 83.30, 91.00];
 const MEDICARE_PART_B_STANDARD_MONTHLY = 202.90;
 
 // Returns the inflation multiplier to apply to base-year bracket ceilings/deductions for a given calendar year.
-export function taxInflFactor(params: InputParams, age: number): number {
+export function taxInflFactor(params: InputParams, age: number, inflationRate = params.inf): number {
   const calendarYear = new Date().getFullYear() + (age - params.age);
-  return Math.pow(1 + params.inf, Math.max(0, calendarYear - BASE_TAX_YEAR));
+  return Math.pow(1 + inflationRate, Math.max(0, calendarYear - BASE_TAX_YEAR));
 }
 
 // Returns how many people on this tax return are eligible for the 65+ extra deduction.
@@ -411,7 +411,17 @@ export function computeGuaranteedIncome(params: InputParams, age: number): numbe
  * @param conversionSchedule - Optional per-year override: age -> forced conversion amount.
  *   When provided, bracketHeadroom logic is skipped and the schedule amount is used (capped by trad balance).
  */
-export function runProjection(params: InputParams, r: number, conversionSchedule?: Record<number, number>): ProjectionRow[] {
+export function runProjection(
+  params: InputParams,
+  rOrOptions: number | ProjectionOptions,
+  legacyConversionSchedule?: Record<number, number>,
+): ProjectionRow[] {
+  const options: ProjectionOptions = typeof rOrOptions === 'number'
+    ? { returnRate: rOrOptions, conversionSchedule: legacyConversionSchedule }
+    : rOrOptions;
+  const baseReturn = options.returnRate ?? params.r;
+  const conversionSchedule = options.conversionSchedule;
+  const scenarioByAge = new Map((options.scenarioPath ?? []).map(y => [y.age, y]));
   let trad = params.tradBal;
   let roth = params.rothBal;
   let rothBasis = params.rothBasis ?? params.rothBal;
@@ -453,8 +463,66 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
   let magi2YearsAgo = 0;
   let magi1YearAgo = 0;
 
+  const factorAtAge = new Map<number, {
+    portfolioReturn: number;
+    taxableReturn: number;
+    hsaReturn: number;
+    inflationRate: number;
+    expenseInflationRate: number;
+    healthcareInflationRate: number;
+    ssCola: number;
+    spendingShock: number;
+    inflationFactor: number;
+    expenseFactor: number;
+    healthcareFactor: number;
+    ssFactor: number;
+  }>();
+  let inflationFactor = 1;
+  let expenseFactor = 1;
+  let healthcareFactor = 1;
+  let ssFactor = 1;
   for (let y = 0; y <= totalYears; y++) {
     const age = params.age + y;
+    const scenarioYear = scenarioByAge.get(age);
+    const inflationRate = scenarioYear?.inflation ?? params.inf;
+    const expenseInflationRate = scenarioYear?.expenseInflation ?? params.expenseInflationRate;
+    const healthcareInflationRate = scenarioYear?.healthcareInflation ?? params.healthcareInflationRate;
+    const ssCola = scenarioYear?.ssCOLA ?? params.ssCOLA;
+    if (y > 0) {
+      inflationFactor *= (1 + inflationRate);
+      expenseFactor *= (1 + expenseInflationRate);
+      healthcareFactor *= (1 + healthcareInflationRate);
+      ssFactor *= (1 + ssCola);
+    }
+    factorAtAge.set(age, {
+      portfolioReturn: scenarioYear?.portfolioReturn ?? baseReturn,
+      taxableReturn: scenarioYear?.taxableReturn ?? params.taxableReturn,
+      hsaReturn: scenarioYear?.hsaReturn ?? params.hsaReturn,
+      inflationRate,
+      expenseInflationRate,
+      healthcareInflationRate,
+      ssCola,
+      spendingShock: scenarioYear?.spendingShock ?? 0,
+      inflationFactor,
+      expenseFactor,
+      healthcareFactor,
+      ssFactor,
+    });
+  }
+  const retireFactors = factorAtAge.get(params.retireAge) ?? {
+    inflationFactor: 1,
+    expenseFactor: 1,
+    healthcareFactor: 1,
+    ssFactor: 1,
+  };
+
+  for (let y = 0; y <= totalYears; y++) {
+    const age = params.age + y;
+    const scenario = factorAtAge.get(age)!;
+    const { portfolioReturn, taxableReturn, hsaReturn, inflationRate, ssCola, spendingShock } = scenario;
+    const expenseInflationFactor = scenario.expenseFactor;
+    const healthcareInflationFactor = scenario.healthcareFactor;
+    const cpiInflationFactor = scenario.inflationFactor;
     const spouseCurrentAge = params.spouseAge !== undefined ? params.spouseAge + y : undefined;
     const primaryAlive = age <= params.lifeExp;
     const spouseAlive = params.spouseAge !== undefined && (!params.spouseLifeExp || spouseCurrentAge! <= params.spouseLifeExp);
@@ -465,7 +533,7 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
     const num65 = filingStatusForYear === 'single'
       ? (isSurvivorYear ? spouseEligible65 : primaryEligible65)
       : primaryEligible65 + spouseEligible65;
-    const inflFactor = taxInflFactor(params, age);
+    const inflFactor = taxInflFactor(params, age, inflationRate);
     let rmd = 0, qcd = 0, conv = 0, tradW = 0, rothW = 0, taxableW = 0, hsaW = 0;
     let pensionInc = 0;
     let ssInc = 0, spouseSsInc = 0;
@@ -499,10 +567,10 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
     const priorYearEndTrad = trad;
 
     // Apply returns
-    trad *= (1 + r);
-    roth *= (1 + r);
-    taxable *= (1 + params.taxableReturn);
-    hsa *= (1 + params.hsaReturn);
+    trad *= (1 + portfolioReturn);
+    roth *= (1 + portfolioReturn);
+    taxable *= (1 + taxableReturn);
+    hsa *= (1 + hsaReturn);
     if (taxable > 0) {
       investmentOrdinaryIncome = Math.round(taxable * (params.taxableOrdinaryYield ?? 0));
       qualifiedDividends = Math.round(taxable * (params.taxableQualifiedDividendYield ?? 0));
@@ -511,7 +579,6 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
     }
 
     // Calculate inflation-adjusted expenses
-    const ry = y - retireIn;
     const baseExpense = params.expenses * 12;
     const baseHcExpense = params.healthcareExpenses * 12;
     const baseDiscExpense = params.discretionaryExpenses * 12;
@@ -610,7 +677,6 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
 
       // Record expenses for display (salary covers them — no account draws)
       if (params.expenseItems && params.expenseItems.length > 0) {
-        const yearsOut = age - params.age;
         for (const item of params.expenseItems) {
           const itemStart = item.startAge ?? params.age;
           let itemEnd = item.endAge ?? projEndAge;
@@ -620,17 +686,16 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
           }
           if (item.isOneTime) {
             if (item.atAge === age) {
-              const infl = Math.pow(1 + params.expenseInflationRate, yearsOut);
-              const annual = Math.round(item.monthly * infl);
+              const annual = Math.round(item.monthly * expenseInflationFactor);
               taxable = Math.max(0, taxable - annual);
               yearExpense += annual;
             }
           } else {
             if (age < itemStart || age > itemEnd) continue;
             let infl = 1;
-            if (item.inflationType === 'general') infl = Math.pow(1 + params.expenseInflationRate, yearsOut);
-            else if (item.inflationType === 'healthcare') infl = Math.pow(1 + params.healthcareInflationRate, yearsOut);
-            else if (item.inflationType === 'cpi') infl = Math.pow(1 + params.inf, yearsOut);
+            if (item.inflationType === 'general') infl = expenseInflationFactor;
+            else if (item.inflationType === 'healthcare') infl = healthcareInflationFactor;
+            else if (item.inflationType === 'cpi') infl = cpiInflationFactor;
             const annual = item.monthly * 12 * infl;
             if (item.category === 'healthcare') yearHcExpense += annual;
             else if (item.category === 'discretionary') yearDiscExpense += annual;
@@ -656,7 +721,6 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
     } else {
       // Distribution phase
       if (params.expenseItems && params.expenseItems.length > 0) {
-        const yearsOut = age - params.age;
         for (const item of params.expenseItems) {
           if (item.isOneTime) continue;
           const itemStart = item.startAge ?? params.age;
@@ -667,9 +731,9 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
           }
           if (age < itemStart || age > itemEnd) continue;
           let infl = 1;
-          if (item.inflationType === 'general') infl = Math.pow(1 + params.expenseInflationRate, yearsOut);
-          else if (item.inflationType === 'healthcare') infl = Math.pow(1 + params.healthcareInflationRate, yearsOut);
-          else if (item.inflationType === 'cpi') infl = Math.pow(1 + params.inf, yearsOut);
+          if (item.inflationType === 'general') infl = expenseInflationFactor;
+          else if (item.inflationType === 'healthcare') infl = healthcareInflationFactor;
+          else if (item.inflationType === 'cpi') infl = cpiInflationFactor;
           const annual = item.monthly * 12 * infl;
           if (item.category === 'healthcare') yearHcExpense += annual;
           else if (item.category === 'discretionary') yearDiscExpense += annual;
@@ -678,22 +742,22 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
         yearExpense = Math.round(yearExpense);
         yearHcExpense = Math.round(yearHcExpense);
         yearDiscExpense = Math.round(yearDiscExpense);
-        yearLtcExpense = Math.round(baseLtcExpense * Math.pow(1 + params.healthcareInflationRate, ry));
+        yearLtcExpense = Math.round(baseLtcExpense * (healthcareInflationFactor / retireFactors.healthcareFactor));
       } else {
-        yearExpense = Math.round(baseExpense * Math.pow(1 + params.expenseInflationRate, ry));
-        yearHcExpense = Math.round(baseHcExpense * Math.pow(1 + params.healthcareInflationRate, ry));
-        yearDiscExpense = Math.round(baseDiscExpense * Math.pow(1 + params.inf, ry));
-        yearLtcExpense = Math.round(baseLtcExpense * Math.pow(1 + params.healthcareInflationRate, ry));
+        yearExpense = Math.round(baseExpense * (expenseInflationFactor / retireFactors.expenseFactor));
+        yearHcExpense = Math.round(baseHcExpense * (healthcareInflationFactor / retireFactors.healthcareFactor));
+        yearDiscExpense = Math.round(baseDiscExpense * (cpiInflationFactor / retireFactors.inflationFactor));
+        yearLtcExpense = Math.round(baseLtcExpense * (healthcareInflationFactor / retireFactors.healthcareFactor));
       }
       // Add one-time expenses this year
       if (params.expenseItems) {
         for (const item of params.expenseItems) {
           if (item.isOneTime && item.atAge === age) {
-            const yearsOut = age - params.age;
-            yearExpense += Math.round(item.monthly * Math.pow(1 + params.expenseInflationRate, yearsOut));
+            yearExpense += Math.round(item.monthly * expenseInflationFactor);
           }
         }
       }
+      yearExpense += Math.round(spendingShock);
       if (params.includeMedicarePremiums) {
         yearHcExpense += Math.round(num65 * MEDICARE_PART_B_STANDARD_MONTHLY * 12);
       }
@@ -705,10 +769,11 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
 
       if (isSurvivorYear) {
         ssInc = 0;
-        spouseSsInc = Math.max(ssAt(params, age), spouseSsAt(params, age));
+        const colaParams = { ...params, ssCOLA: ssCola };
+        spouseSsInc = Math.max(ssAt(colaParams, age), spouseSsAt(colaParams, age));
       } else {
-        ssInc = age <= params.lifeExp ? ssAt(params, age) : 0;
-        spouseSsInc = spouseSsAt(params, age);
+        ssInc = age <= params.lifeExp ? ssAt({ ...params, ssCOLA: ssCola }, age) : 0;
+        spouseSsInc = spouseSsAt({ ...params, ssCOLA: ssCola }, age);
       }
       pensionInc = computeGuaranteedIncome(params, age);
 
