@@ -16,6 +16,16 @@ A client-side retirement planning tool built with React and TypeScript. All calc
 - **Account modeling** — basic balance/contribution fields or advanced account editor for granular investment accounts with custom returns and guaranteed income streams
 - **Export** — JSON plan file or Excel spreadsheet with year-by-year projection data
 
+## Documentation
+
+Detailed user documentation is drafted in [`docs/wiki`](docs/wiki/) so it can be reviewed in pull requests and then published to the GitHub Wiki.
+
+- [`Home`](docs/wiki/Home.md) — wiki landing page and recommended first workflow
+- [`User Guide`](docs/wiki/User-Guide.md) — detailed walkthrough of plans, setup, results, optimizer, Monte Carlo, import, and export
+- [`Model Assumptions`](docs/wiki/Model-Assumptions.md) — tax, RMD, Social Security, return, and projection assumptions
+- [`Screenshots to Capture`](docs/wiki/Screenshots-To-Capture.md) — screenshot checklist for improving the wiki
+- [`Publishing the Wiki`](docs/wiki/Publishing-The-Wiki.md) — how to publish these pages to the repository wiki
+
 ### Tabs
 
 | Tab | Category | Description |
@@ -87,3 +97,19 @@ src/
 - RMDs follow SECURE 2.0 rules using prior year-end balance; optional QCDs and an estimated joint-life adjustment are supported
 - Roth conversion taxes are modeled as paid from the taxable account
 - IRMAA surcharges based on MAGI from 2 years prior (approximated from current-year income)
+
+## Contributing
+
+Issues and pull requests are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for bug report guidance, PR expectations, and calculation-change notes.
+
+## Support
+
+If this app is useful, you can support ongoing development through the repository's Sponsor button.
+
+## License
+
+MIT License. See [`LICENSE`](LICENSE).
+
+## Disclaimer
+
+This project is an open-source planning tool. It is not financial, tax, legal, or investment advice. Validate important decisions with qualified professionals and official sources.
