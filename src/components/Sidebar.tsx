@@ -95,9 +95,11 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
           <>
             <div className="field">
               <TipLabel text="Spouse age" />
-              <input type="number" value={inputs.spouseAge ?? ''}
-                step={1} placeholder="e.g. 48"
-                onInput={(e) => handleNumberChange('spouseAge', e)} />
+              <div className="range-row">
+                <input type="range" min={20} max={100} value={inputs.spouseAge ?? inputs.age} step={1}
+                  onInput={(e) => handleRangeChange('spouseAge', e)} />
+                <span className="range-val">{inputs.spouseAge ?? inputs.age}</span>
+              </div>
             </div>
             <div className="field">
               <TipLabel text="Spouse birth year" />
@@ -112,6 +114,11 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                   onInput={(e) => handleRangeChange('spouseLifeExp', e)} />
                 <span className="range-val">{inputs.spouseLifeExp ?? inputs.lifeExp}</span>
               </div>
+            </div>
+            <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input type="checkbox" checked={inputs.useJointLifeRmd}
+                onChange={(e) => handleCheckboxChange('useJointLifeRmd', e)} />
+              <TipLabel text="Use joint life RMD estimate" />
             </div>
           </>
         )}
@@ -523,26 +530,6 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
               />
             </div>
           </>
-        )}
-        <div className="field">
-          <TipLabel text="Annual QCD ($)" />
-          <input type="number" value={inputs.qcdAnnual} step={1000}
-            onInput={(e) => handleNumberChange('qcdAnnual', e)} />
-        </div>
-        <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <input type="checkbox" checked={inputs.useJointLifeRmd}
-            onChange={(e) => handleCheckboxChange('useJointLifeRmd', e)} />
-          <TipLabel text="Use joint life RMD estimate" />
-        </div>
-        {inputs.qcdAnnual > 0 && (
-          <div className="field">
-            <TipLabel text="QCD start age" />
-            <div className="range-row">
-              <input type="range" min={70} max={100} value={inputs.qcdStartAge} step={1}
-                onInput={(e) => handleRangeChange('qcdStartAge', e)} />
-              <span className="range-val">{inputs.qcdStartAge}</span>
-            </div>
-          </div>
         )}
       </div>}
 

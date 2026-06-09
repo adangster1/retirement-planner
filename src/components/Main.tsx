@@ -4,6 +4,7 @@ import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } fr
 import { ExpenseTab } from './ExpenseTab';
 import { AccountsTab } from './AccountsTab';
 import Sidebar from './Sidebar';
+import TipLabel from './TipLabel';
 import { Chart as ChartJS, type ChartData, type ChartOptions } from 'chart.js';
 import {
   CategoryScale,
@@ -117,6 +118,12 @@ const Main: React.FC<MainProps> = ({
   const [optimizerGoal, setOptimizerGoal] = useState<OptimizerGoal>('tax');
   const allRows = rows.slice(1); // all years from current age onward (skip y=0 initial state)
   const getSalary = (r: ProjectionRow) => r.age < inputs.retireAge ? (inputs.salary ?? 0) : 0;
+  const handleRmdNumberChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
+    onInputChange(field, Number((e.target as HTMLInputElement).value) || 0);
+  };
+  const handleRmdRangeChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
+    onInputChange(field, Number((e.target as HTMLInputElement).value));
+  };
 
   // Rows past the primary's life expectancy are spouse-only survivor years
   const survivorRowStyle = (r: ProjectionRow, base?: React.CSSProperties): React.CSSProperties => {
@@ -208,9 +215,20 @@ const Main: React.FC<MainProps> = ({
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
+    interaction: {
+      mode: 'index',
+      intersect: false,
+      axis: 'x',
+    },
+    hover: {
+      mode: 'index',
+      intersect: false,
+    },
     plugins: {
       legend: { display: false },
       tooltip: {
+        mode: 'index',
+        intersect: false,
         callbacks: {
           label: (ctx: any) => `${ctx.dataset.label || ''}: ${ctx.parsed.y.toFixed(1)}%`,
         },
@@ -226,9 +244,20 @@ const Main: React.FC<MainProps> = ({
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
+    interaction: {
+      mode: 'index',
+      intersect: false,
+      axis: 'x',
+    },
+    hover: {
+      mode: 'index',
+      intersect: false,
+    },
     plugins: {
       legend: { display: false },
       tooltip: {
+        mode: 'index',
+        intersect: false,
         callbacks: {
           label: (ctx: any) => {
             let l = ctx.dataset.label || '';
@@ -559,6 +588,41 @@ const Main: React.FC<MainProps> = ({
       {activeTab === 'rmd' && (
         <div className="chart-card">
           <div className="chart-title">RMDs and Roth conversions</div>
+          <div className="detail-panel" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>
+            <div className="detail-section-title" style={{ marginTop: 0 }}>RMD strategy settings</div>
+            <div className="two-col">
+              <div className="field">
+                <TipLabel text="Annual QCD ($)" />
+                <input
+                  type="number"
+                  value={inputs.qcdAnnual}
+                  step={1000}
+                  onInput={(e) => handleRmdNumberChange('qcdAnnual', e)}
+                />
+              </div>
+              {inputs.qcdAnnual > 0 && (
+                <div className="field">
+                  <TipLabel text="QCD start age" />
+                  <div className="range-row">
+                    <input
+                      type="range"
+                      min={70}
+                      max={100}
+                      value={inputs.qcdStartAge}
+                      step={1}
+                      onInput={(e) => handleRmdRangeChange('qcdStartAge', e)}
+                    />
+                    <span className="range-val">{inputs.qcdStartAge}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            {inputs.useJointLifeRmd && (
+              <div className="note" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
+                Joint life RMD estimate is enabled from About You, which can reduce RMDs when a spouse is more than 10 years younger.
+              </div>
+            )}
+          </div>
           <div className="legend">
             <span className="li"><span className="ls" style={{ background: '#BA7517' }}></span>RMD required</span>
             <span className="li"><span className="ls" style={{ background: '#378ADD' }}></span>Roth conversion</span>
