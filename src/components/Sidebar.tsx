@@ -21,10 +21,6 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
   const conversionScheduleTotal = conversionScheduleRows.reduce((sum, row) => sum + row.amount, 0);
   const formatDollars = (value: number) => `$${Math.round(value).toLocaleString()}`;
 
-  const handleRangeChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
-    onInputChange(field, Number((e.target as HTMLInputElement).value));
-  };
-
   const handleNumberChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
     const val = Number((e.target as HTMLInputElement).value);
     // Optional spouse fields should be undefined when empty, not 0
@@ -36,16 +32,64 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
     onInputChange(field, (e.target as HTMLSelectElement).value as 'single' | 'married');
   };
 
-  const handleRateChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
-    onInputChange(field, Number((e.target as HTMLInputElement).value) / 100);
-  };
-
   const handleBracketChange = (e: React.FormEvent<HTMLSelectElement>) => {
     onInputChange('targetConvBracket', Number((e.target as HTMLSelectElement).value) as 0 | 1 | 2 | 3);
   };
 
   const handleCheckboxChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
     onInputChange(field, (e.target as HTMLInputElement).checked);
+  };
+
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+  const SliderNumber = ({
+    value,
+    min,
+    max,
+    step,
+    suffix,
+    decimals = 0,
+    onChange,
+  }: {
+    value: number;
+    min: number;
+    max: number;
+    step: number;
+    suffix?: string;
+    decimals?: number;
+    onChange: (value: number) => void;
+  }) => {
+    const update = (raw: string) => {
+      if (raw === '') return;
+      const next = Number(raw);
+      if (!Number.isFinite(next)) return;
+      onChange(clamp(next, min, max));
+    };
+
+    return (
+      <div className="range-row">
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={value}
+          step={step}
+          onInput={(e) => update((e.target as HTMLInputElement).value)}
+        />
+        <div className="range-number-wrap">
+          <input
+            className="range-number"
+            type="number"
+            min={min}
+            max={max}
+            step={step}
+            value={decimals > 0 ? value.toFixed(decimals) : String(Math.round(value))}
+            onInput={(e) => update((e.target as HTMLInputElement).value)}
+            aria-label="Enter value"
+          />
+          {suffix && <span className="range-number-suffix">{suffix}</span>}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -55,11 +99,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
         <div className="section-label">About you</div>
         <div className="field">
           <TipLabel text="Current age" />
-          <div className="range-row">
-            <input type="range" min={20} max={70} value={inputs.age} step={1}
-              onInput={(e) => handleRangeChange('age', e)} />
-            <span className="range-val">{inputs.age}</span>
-          </div>
+          <SliderNumber value={inputs.age} min={20} max={70} step={1} onChange={(value) => onInputChange('age', value)} />
         </div>
         <div className="field">
           <TipLabel text="Birth year" />
@@ -69,19 +109,11 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
         </div>
         <div className="field">
           <TipLabel text="Retirement age" />
-          <div className="range-row">
-            <input type="range" min={40} max={75} value={inputs.retireAge} step={1}
-              onInput={(e) => handleRangeChange('retireAge', e)} />
-            <span className="range-val">{inputs.retireAge}</span>
-          </div>
+          <SliderNumber value={inputs.retireAge} min={40} max={75} step={1} onChange={(value) => onInputChange('retireAge', value)} />
         </div>
         <div className="field">
           <TipLabel text="Life expectancy" />
-          <div className="range-row">
-            <input type="range" min={70} max={100} value={inputs.lifeExp} step={1}
-              onInput={(e) => handleRangeChange('lifeExp', e)} />
-            <span className="range-val">{inputs.lifeExp}</span>
-          </div>
+          <SliderNumber value={inputs.lifeExp} min={70} max={100} step={1} onChange={(value) => onInputChange('lifeExp', value)} />
         </div>
         <div className="field">
           <TipLabel text="Filing status" />
@@ -95,11 +127,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
           <>
             <div className="field">
               <TipLabel text="Spouse age" />
-              <div className="range-row">
-                <input type="range" min={20} max={100} value={inputs.spouseAge ?? inputs.age} step={1}
-                  onInput={(e) => handleRangeChange('spouseAge', e)} />
-                <span className="range-val">{inputs.spouseAge ?? inputs.age}</span>
-              </div>
+              <SliderNumber value={inputs.spouseAge ?? inputs.age} min={20} max={100} step={1} onChange={(value) => onInputChange('spouseAge', value)} />
             </div>
             <div className="field">
               <TipLabel text="Spouse birth year" />
@@ -109,11 +137,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             </div>
             <div className="field">
               <TipLabel text="Spouse life expectancy" />
-              <div className="range-row">
-                <input type="range" min={70} max={100} value={inputs.spouseLifeExp ?? inputs.lifeExp} step={1}
-                  onInput={(e) => handleRangeChange('spouseLifeExp', e)} />
-                <span className="range-val">{inputs.spouseLifeExp ?? inputs.lifeExp}</span>
-              </div>
+              <SliderNumber value={inputs.spouseLifeExp ?? inputs.lifeExp} min={70} max={100} step={1} onChange={(value) => onInputChange('spouseLifeExp', value)} />
             </div>
             <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input type="checkbox" checked={inputs.useJointLifeRmd}
@@ -156,11 +180,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
         {/* Claim age slider */}
         <div className="field">
           <TipLabel text="Claim age" />
-          <div className="range-row">
-            <input type="range" min={62} max={70} value={inputs.ssAge} step={1}
-              onInput={(e) => handleRangeChange('ssAge', e)} />
-            <span className="range-val">{inputs.ssAge}</span>
-          </div>
+          <SliderNumber value={inputs.ssAge} min={62} max={70} step={1} onChange={(value) => onInputChange('ssAge', value)} />
         </div>
 
         {/* Benefit display / manual entry */}
@@ -255,17 +275,14 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
 
         <div className="field">
           <TipLabel text="Benefit paid (%)" />
-          <div className="range-row">
-            <input
-              type="range"
-              min={0}
-              max={1}
-              value={inputs.ssBenefitFactor ?? 1}
-              step={0.01}
-              onInput={(e) => onInputChange('ssBenefitFactor', Number((e.target as HTMLInputElement).value))}
-            />
-            <span className="range-val">{Math.round((inputs.ssBenefitFactor ?? 1) * 100)}%</span>
-          </div>
+          <SliderNumber
+            value={(inputs.ssBenefitFactor ?? 1) * 100}
+            min={0}
+            max={100}
+            step={1}
+            suffix="%"
+            onChange={(value) => onInputChange('ssBenefitFactor', value / 100)}
+          />
           <div className="note" style={{ marginTop: '3px' }}>
             Models reduced Social Security payouts across primary, spouse, and survivor benefits.
           </div>
@@ -273,11 +290,15 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
 
         <div className="field">
           <TipLabel text="SS COLA (%)" />
-          <div className="range-row">
-            <input type="range" min={0} max={5} value={(inputs.ssCOLA ?? 0.025) * 100} step={0.25}
-              onInput={(e) => handleRateChange('ssCOLA', e)} />
-            <span className="range-val">{((inputs.ssCOLA ?? 0.025) * 100).toFixed(2)}%</span>
-          </div>
+          <SliderNumber
+            value={(inputs.ssCOLA ?? 0.025) * 100}
+            min={0}
+            max={5}
+            step={0.25}
+            suffix="%"
+            decimals={2}
+            onChange={(value) => onInputChange('ssCOLA', value / 100)}
+          />
         </div>
 
         {inputs.filingStatus === 'married' && (
@@ -364,12 +385,13 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
 
                   <div className="field">
                     <TipLabel text="Spouse claim age" />
-                    <div className="range-row">
-                      <input type="range" min={62} max={ssType === 'spousal' ? 67 : 70}
-                        value={ssType === 'spousal' ? Math.min(claimAge, 67) : claimAge} step={1}
-                        onInput={(e) => handleRangeChange('spouseSsAge', e)} />
-                      <span className="range-val">{ssType === 'spousal' ? Math.min(claimAge, 67) : claimAge}</span>
-                    </div>
+                    <SliderNumber
+                      value={ssType === 'spousal' ? Math.min(claimAge, 67) : claimAge}
+                      min={62}
+                      max={ssType === 'spousal' ? 67 : 70}
+                      step={1}
+                      onChange={(value) => onInputChange('spouseSsAge', value)}
+                    />
                     {showSpousal && (
                       <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>
                         Spousal benefit doesn't increase past FRA (age {spouseFra.toFixed(1)}).
@@ -546,19 +568,23 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             </div>
             <div className="field">
               <TipLabel text="Convert from age" />
-              <div className="range-row">
-                <input type="range" min={inputs.age} max={inputs.convUntil} value={inputs.convStart ?? inputs.retireAge} step={1}
-                  onInput={(e) => handleRangeChange('convStart', e)} />
-                <span className="range-val">{inputs.convStart ?? inputs.retireAge}</span>
-              </div>
+              <SliderNumber
+                value={inputs.convStart ?? inputs.retireAge}
+                min={inputs.age}
+                max={inputs.convUntil}
+                step={1}
+                onChange={(value) => onInputChange('convStart', value)}
+              />
             </div>
             <div className="field">
               <TipLabel text="Convert until age" />
-              <div className="range-row">
-                <input type="range" min={inputs.convStart ?? inputs.retireAge} max={80} value={inputs.convUntil} step={1}
-                  onInput={(e) => handleRangeChange('convUntil', e)} />
-                <span className="range-val">{inputs.convUntil}</span>
-              </div>
+              <SliderNumber
+                value={inputs.convUntil}
+                min={inputs.convStart ?? inputs.retireAge}
+                max={80}
+                step={1}
+                onChange={(value) => onInputChange('convUntil', value)}
+              />
             </div>
             <div className="field">
               <TipLabel text="Target conversion bracket" />
