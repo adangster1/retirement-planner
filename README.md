@@ -16,6 +16,10 @@ A client-side retirement planning tool built with React and TypeScript. All calc
 - **Account modeling** — basic balance/contribution fields or advanced account editor for granular investment accounts with custom returns and guaranteed income streams
 - **Export** — JSON plan file or Excel spreadsheet with year-by-year projection data
 
+## Sample Data
+
+Importable sample plans live in [`sample-data`](sample-data/). They cover single and married scenarios, different Social Security options, basic and advanced account setups, baseline expenses, Roth conversions, QCDs, and reduced Social Security assumptions.
+
 ## Documentation
 
 Detailed user documentation is drafted in [`docs/wiki`](docs/wiki/) so it can be reviewed in pull requests and then published to the GitHub Wiki.
