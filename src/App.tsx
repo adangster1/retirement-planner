@@ -87,6 +87,7 @@ const DEFAULTS: InputParams = {
   // Tax
   stateTaxPreset: 'CUSTOM',
   stateTaxRate: 0,
+  stateLocalTaxRate: 0,
   stateTaxBrackets: undefined,
 
   // Assumptions

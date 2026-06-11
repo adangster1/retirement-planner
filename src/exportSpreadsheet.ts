@@ -90,6 +90,7 @@ function inputsSheet(inputs: InputParams): XLSX.WorkSheet {
     ['State tax preset rates pulled', stateTaxPreset?.ratesAsOf ?? ''],
     ['State tax preset source', stateTaxPreset?.sourceUrl ?? ''],
     ['State tax rate (%)', pct(inputs.stateTaxRate)],
+    ['Additional local tax rate (%)', pct(inputs.stateLocalTaxRate ?? 0)],
     ['State tax brackets JSON', inputs.stateTaxBrackets ?? ''],
     ['Annual QCD ($)', inputs.qcdAnnual],
     ['QCD start age', inputs.qcdStartAge],

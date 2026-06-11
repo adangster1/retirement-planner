@@ -510,6 +510,16 @@ describe('runProjection', () => {
     expect(estimateConfiguredStateTax(100000, stateParams)).toBe(0);
   });
 
+  it('adds local tax on top of state tax presets', () => {
+    const maryland = {
+      ...BASE,
+      includeStateTax: true,
+      stateTaxPreset: 'MD',
+      stateLocalTaxRate: 0.032,
+    };
+    expect(estimateConfiguredStateTax(100000, maryland)).toBe(5750 + 3200);
+  });
+
   it('models taxable account qualified dividends and realized gains', () => {
     const taxableIncome = {
       ...BASE,

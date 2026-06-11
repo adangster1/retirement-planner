@@ -206,22 +206,26 @@ function calculateBracketTax(income: number, brackets: Array<[number | null, num
 
 function estimateStateTax(income: number, params: InputParams, status: 'single' | 'married' = params.filingStatus): number {
   if (!params.includeStateTax || income <= 0) return 0;
+  let tax = 0;
   const preset = getStateTaxPreset(params.stateTaxPreset);
   if (preset) {
-    if (preset.brackets) return calculateBracketTax(income, preset.brackets[status]);
-    return preset.flatRate && preset.flatRate > 0 ? Math.round(income * preset.flatRate) : 0;
-  }
-  if (params.stateTaxBrackets) {
+    tax = preset.brackets
+      ? calculateBracketTax(income, preset.brackets[status])
+      : preset.flatRate && preset.flatRate > 0 ? Math.round(income * preset.flatRate) : 0;
+  } else if (params.stateTaxBrackets) {
     try {
       const parsed = JSON.parse(params.stateTaxBrackets) as Array<[number, number]>;
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return calculateBracketTax(income, parsed);
+        tax = calculateBracketTax(income, parsed);
       }
     } catch {
       // Fall back to flat state rate below.
     }
+  } else if (params.stateTaxRate > 0) {
+    tax = Math.round(income * params.stateTaxRate);
   }
-  return params.stateTaxRate > 0 ? Math.round(income * params.stateTaxRate) : 0;
+  if ((params.stateLocalTaxRate ?? 0) > 0) tax += Math.round(income * (params.stateLocalTaxRate ?? 0));
+  return tax;
 }
 
 export function estimateConfiguredStateTax(income: number, params: InputParams): number {

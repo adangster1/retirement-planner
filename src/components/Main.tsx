@@ -1130,6 +1130,20 @@ const Main: React.FC<MainProps> = ({
                       <strong>{selectedStateTaxPreset.name}</strong> preset: {selectedStateTaxPreset.confidence} estimate, tax year {selectedStateTaxPreset.taxYear}, rates pulled {selectedStateTaxPreset.ratesAsOf}. {selectedStateTaxPreset.notes}
                     </div>
                   )}
+                  <div className="field">
+                    <TipLabel text="Additional local tax (%)" />
+                    <div className="range-row">
+                      <input
+                        type="range"
+                        min={0}
+                        max={5}
+                        value={(inputs.stateLocalTaxRate ?? 0) * 100}
+                        step={0.25}
+                        onInput={(e) => handleTaxRateChange('stateLocalTaxRate', e)}
+                      />
+                      <span className="range-val">{((inputs.stateLocalTaxRate ?? 0) * 100).toFixed(2)}%</span>
+                    </div>
+                  </div>
                   {!selectedStateTaxPreset && (
                     <>
                       <div className="field">
