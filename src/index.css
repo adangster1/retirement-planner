@@ -38,6 +38,9 @@ input[type=range] { width: 100%; accent-color: #378ADD; }
 .range-row { display: flex; align-items: center; gap: 8px; }
 .range-row input[type=range] { flex: 1; }
 .range-val { font-size: 13px; font-weight: 500; min-width: 38px; text-align: right; }
+.range-number-wrap { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex: 0 0 auto; min-width: 92px; }
+.range-number { width: 78px !important; padding: 5px 6px !important; text-align: right; font-weight: 600; }
+.range-number-suffix { color: #666; font-size: 12px; font-weight: 600; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; }
 .metric-card { background: #f0efe8; border-radius: 8px; padding: 0.55rem 0.7rem; }
@@ -692,6 +695,10 @@ input[type=range] {
   color: var(--text);
   font-size: 18px;
   font-weight: 700;
+}
+
+.range-number-suffix {
+  color: var(--text-muted);
 }
 
 .horizon-card {
