@@ -192,6 +192,13 @@ describe('runProjection', () => {
     expect(postSS[0].ss).toBeGreaterThan(0);
   });
 
+  it('applies Social Security benefit reduction factor', () => {
+    const full = runProjection({ ...BASE, ssBenefitFactor: 1 }, BASE.r).find(r => r.age === BASE.ssAge)!;
+    const reduced = runProjection({ ...BASE, ssBenefitFactor: 0.75 }, BASE.r).find(r => r.age === BASE.ssAge)!;
+
+    expect(reduced.ss).toBe(Math.round(full.ss * 0.75));
+  });
+
   it('RMDs start at the correct age based on birth year and are zero before', () => {
     // BASE age=55 in 2026 → birth year 1971 → RMD start age 75 (born 1960+)
     const rows = runProjection(BASE, BASE.r);

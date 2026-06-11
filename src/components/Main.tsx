@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { InputParams, ProjectionRow, Account, PlannerPage } from '../types';
 import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } from '../monteCarlo';
-import { spouseSsAt } from '../financial';
+import { spouseSsAt, ssAt } from '../financial';
 import { ExpenseTab } from './ExpenseTab';
 import { AccountsTab } from './AccountsTab';
 import Sidebar from './Sidebar';
@@ -197,7 +197,9 @@ const Main: React.FC<MainProps> = ({
   const resultAgeRange = allRows.length > 0
     ? `age ${allRows[0].age}-${allRows[allRows.length - 1].age}`
     : projectionAgeRange;
-  const primarySsMonthly = inputs.ss;
+  const primarySsMonthly = Math.round(ssAt(inputs, inputs.ssAge) / 12);
+  const scheduledPrimarySsMonthly = inputs.ss;
+  const ssBenefitFactor = inputs.ssBenefitFactor ?? 1;
   const spouseClaimAge = inputs.spouseSsAge ?? 67;
   const spouseClaimPrimaryAge = inputs.spouseAge !== undefined
     ? inputs.age + Math.max(0, spouseClaimAge - inputs.spouseAge)
@@ -620,6 +622,7 @@ const Main: React.FC<MainProps> = ({
             </div>
             <div className="note" style={{ marginTop: 0 }}>
               {fmt(totalSsMonthly)} / month at the chosen claim ages
+              {ssBenefitFactor < 1 ? ` (${Math.round(ssBenefitFactor * 100)}% of scheduled benefits)` : ''}
             </div>
             <div className="ss-benefit-list">
               <div className="ss-benefit-row">
@@ -627,6 +630,13 @@ const Main: React.FC<MainProps> = ({
                 <span>You · claim {inputs.ssAge}</span>
                 <strong>{fmt(primarySsMonthly)}/mo</strong>
               </div>
+              {ssBenefitFactor < 1 && scheduledPrimarySsMonthly > 0 && (
+                <div className="ss-benefit-row muted">
+                  <span />
+                  <span>Scheduled benefit</span>
+                  <strong>{fmt(scheduledPrimarySsMonthly)}/mo</strong>
+                </div>
+              )}
               {inputs.filingStatus === 'married' && (
                 <div className="ss-benefit-row">
                   <span className="ss-dot spouse" />

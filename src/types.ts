@@ -36,6 +36,7 @@ export interface InputParams {
   ss62?: number;   // monthly benefit if claimed at 62
   ss67?: number;   // monthly benefit if claimed at 67 (FRA)
   ss70?: number;   // monthly benefit if claimed at 70
+  ssBenefitFactor?: number; // fraction of scheduled Social Security benefits paid, 0-1
 
   // Spending
   expenses: number;

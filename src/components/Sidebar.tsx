@@ -167,8 +167,13 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
         <div className="field">
           {inputs.ss62 && inputs.ss67 && inputs.ss70 ? (
             <div style={{ fontSize: '12px', color: '#555', background: '#F0F4FF', borderRadius: '4px', padding: '6px 8px' }}>
-              <span style={{ fontWeight: 600, color: '#1A5276' }}>${inputs.ss.toLocaleString()}/mo</span>
+              <span style={{ fontWeight: 600, color: '#1A5276' }}>${Math.round(inputs.ss * (inputs.ssBenefitFactor ?? 1)).toLocaleString()}/mo</span>
               <span style={{ marginLeft: 6, color: '#888' }}>at age {inputs.ssAge} (auto-calculated)</span>
+              {(inputs.ssBenefitFactor ?? 1) < 1 && (
+                <span style={{ marginLeft: 6, color: '#888' }}>
+                  from ${inputs.ss.toLocaleString()} scheduled
+                </span>
+              )}
             </div>
           ) : (
             <>
@@ -247,6 +252,24 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             </div>
           );
         })()}
+
+        <div className="field">
+          <TipLabel text="Benefit paid (%)" />
+          <div className="range-row">
+            <input
+              type="range"
+              min={0}
+              max={1}
+              value={inputs.ssBenefitFactor ?? 1}
+              step={0.01}
+              onInput={(e) => onInputChange('ssBenefitFactor', Number((e.target as HTMLInputElement).value))}
+            />
+            <span className="range-val">{Math.round((inputs.ssBenefitFactor ?? 1) * 100)}%</span>
+          </div>
+          <div className="note" style={{ marginTop: '3px' }}>
+            Models reduced Social Security payouts across primary, spouse, and survivor benefits.
+          </div>
+        </div>
 
         <div className="field">
           <TipLabel text="SS COLA (%)" />

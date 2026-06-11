@@ -47,6 +47,7 @@ const DEFAULTS: InputParams = {
   ss62: 0,
   ss67: 0,
   ss70: 0,
+  ssBenefitFactor: 1,
 
   // Spending
   expenses: 0,

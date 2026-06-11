@@ -774,6 +774,17 @@ input[type=range] {
   color: var(--text);
 }
 
+.ss-benefit-row.muted {
+  padding-top: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.ss-benefit-row.muted strong {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 .ss-dot {
   width: 8px;
   height: 8px;
