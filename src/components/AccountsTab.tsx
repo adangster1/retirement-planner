@@ -65,6 +65,7 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
   const accounts = inputs.accounts ?? [];
   const hasAccounts = accounts.length > 0;
   const [subTab, setSubTab] = useState<'basic' | 'advanced'>(() => hasAccounts ? 'advanced' : 'basic');
+  const [growthDrafts, setGrowthDrafts] = useState<Record<string, string>>({});
 
   const investmentAccounts = accounts.filter(a => INVESTMENT_TYPES.includes(a.type));
   const guaranteedAccounts = accounts.filter(a => GUARANTEED_TYPES.includes(a.type));
@@ -91,6 +92,23 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
     incomeStartAge: inputs.retireAge,
     inflationAdjusted: false,
   }]);
+  const formatGrowthRate = (acct: Account) =>
+    acct.growthRate !== undefined ? (acct.growthRate * 100).toFixed(1) : '';
+  const updateGrowthRate = (acct: Account, raw: string) => {
+    setGrowthDrafts(prev => ({ ...prev, [acct.id]: raw }));
+    if (raw === '') {
+      update(acct.id, { growthRate: undefined });
+      return;
+    }
+    const value = Number(raw);
+    if (Number.isFinite(value)) update(acct.id, { growthRate: value / 100 });
+  };
+  const finishGrowthEdit = (acct: Account) => {
+    setGrowthDrafts(prev => {
+      const { [acct.id]: _discard, ...rest } = prev;
+      return rest;
+    });
+  };
 
   // Summary totals from accounts
   const tradTotal = investmentAccounts.filter(a => a.type === 'traditional').reduce((s, a) => s + a.balance, 0);
@@ -287,10 +305,11 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
                       <input
                         style={inputStyle}
                         type="number"
-                        value={acct.growthRate !== undefined ? (acct.growthRate * 100).toFixed(1) : ''}
+                        value={growthDrafts[acct.id] ?? formatGrowthRate(acct)}
                         step={0.25}
                         placeholder={`${(defaultGrowthForType(inputs, acct.type) * 100).toFixed(1)}%`}
-                        onChange={e => update(acct.id, { growthRate: e.target.value === '' ? undefined : Number(e.target.value) / 100 })}
+                        onChange={e => updateGrowthRate(acct, e.target.value)}
+                        onBlur={() => finishGrowthEdit(acct)}
                       />
                     </div>
                   </td>
