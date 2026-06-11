@@ -21,6 +21,7 @@ const DEFINITIONS: Record<string, string> = {
   'HSA contrib ($/mo)': 'Monthly contributions to your HSA. The 2026 annual limit is modeled as $4,400 single or $8,750 family, with a $1,000 catch-up at age 55+.',
   'Claim age': 'The age when you start collecting Social Security. Claiming at 62 reduces benefits by ~30%; waiting until 70 increases them by ~24% vs. full retirement age.',
   'Monthly benefit at claim age ($)': 'Your estimated monthly Social Security benefit at your chosen claim age. Use your SSA.gov estimate for the most accurate number.',
+  'Benefit paid (%)': 'Fraction of scheduled Social Security benefits to model as actually paid. Use 100% for current-law scheduled benefits or a lower value to stress-test future benefit reductions.',
   'SS COLA (%)': 'Cost of Living Adjustment — the annual increase applied to Social Security benefits. The historical average is ~2.5%, but it varies year to year (was 8.7% in 2023, 3.2% in 2024).',
   'Base monthly expenses ($)': 'Your core living expenses in retirement (housing, food, utilities, insurance, transportation) — before healthcare and discretionary.',
   'Healthcare ($/mo)': 'Estimated monthly healthcare costs in retirement (Medicare premiums, supplemental insurance, prescriptions, out-of-pocket). Medicare Part B baseline is $202.90/mo for 2026.',

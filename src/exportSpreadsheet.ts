@@ -46,6 +46,7 @@ function inputsSheet(inputs: InputParams): XLSX.WorkSheet {
     ['SS estimate at 62 ($/mo)', inputs.ss62 || ''],
     ['SS estimate at 67 ($/mo)', inputs.ss67 || ''],
     ['SS estimate at 70 ($/mo)', inputs.ss70 || ''],
+    ['SS benefit paid (%)', pct(inputs.ssBenefitFactor ?? 1)],
     ['SS COLA (%/yr)', pct(inputs.ssCOLA)],
     [],
     ['── Spending ──', ''],

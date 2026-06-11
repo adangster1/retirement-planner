@@ -323,8 +323,9 @@ export function ssInterpolate(ss62: number, ss67: number, ss70: number, age: num
 
 export function ssAt(params: InputParams, age: number): number {
   if (age < params.ssAge) return 0;
+  const benefitFactor = params.ssBenefitFactor ?? 1;
   // Apply SS COLA
-  return params.ss * 12 * Math.pow(1 + params.ssCOLA, age - params.ssAge);
+  return params.ss * benefitFactor * 12 * Math.pow(1 + params.ssCOLA, age - params.ssAge);
 }
 
 function spousalMonthly(params: InputParams, claimAge: number): number {
@@ -344,6 +345,7 @@ function spousalMonthly(params: InputParams, claimAge: number): number {
 
 export function spouseSsAt(params: InputParams, age: number): number {
   if (params.spouseAge === undefined) return 0;
+  const benefitFactor = params.ssBenefitFactor ?? 1;
   const spouseAgeThisYear = params.spouseAge + (age - params.age);
   if (params.spouseLifeExp && spouseAgeThisYear > params.spouseLifeExp) return 0;
 
@@ -356,7 +358,7 @@ export function spouseSsAt(params: InputParams, age: number): number {
     const effectiveClaimAge = Math.min(claimAge, 67);
     if (spouseAgeThisYear < effectiveClaimAge || !primaryHasFiled) return 0;
     const monthly = spousalMonthly(params, claimAge);
-    return monthly * 12 * Math.pow(1 + params.ssCOLA, spouseAgeThisYear - effectiveClaimAge);
+    return monthly * benefitFactor * 12 * Math.pow(1 + params.ssCOLA, spouseAgeThisYear - effectiveClaimAge);
   }
 
   // 'own' or 'combined' — own benefit starts at her claim age, no dependency on primary
@@ -383,7 +385,7 @@ export function spouseSsAt(params: InputParams, age: number): number {
     ? Math.max(ownMonthly, spousalMonthly(params, claimAge))
     : ownMonthly;
 
-  return monthly * 12 * Math.pow(1 + params.ssCOLA, spouseAgeThisYear - claimAge);
+  return monthly * benefitFactor * 12 * Math.pow(1 + params.ssCOLA, spouseAgeThisYear - claimAge);
 }
 
 export function computeGuaranteedIncome(params: InputParams, age: number): number {
