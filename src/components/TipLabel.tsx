@@ -45,6 +45,8 @@ const DEFINITIONS: Record<string, string> = {
   'Use joint life RMD estimate': 'Estimates the larger RMD divisor allowed when your spouse is the sole beneficiary and more than 10 years younger. Uses an approximation, not the full IRS two-dimensional table.',
   'Annual return (%)': 'Expected nominal annual return on traditional and Roth accounts (typically stock-heavy). Historical S&P 500 average is ~10% nominal, ~7% real. Use 6-8% for conservative estimates.',
   'Taxable account return (%)': 'Expected nominal annual return on taxable brokerage accounts. May be lower if holding more bonds or cash. Long-term stock returns average ~10% nominal.',
+  'HSA return (%)': 'Expected nominal annual return on HSA balances. Advanced HSA accounts use this when no per-account growth rate is set.',
+  'Nominal annual growth (%)': 'Expected annual account growth before adjusting for inflation. Leave blank to use the Basic default for this account type.',
   'Taxable ordinary yield (%)': 'Annual taxable-account yield taxed as ordinary income, such as interest and nonqualified dividends.',
   'Qualified dividend yield (%)': 'Annual taxable-account qualified dividend yield, taxed at long-term capital gains rates federally.',
   'Realized LTCG yield (%)': 'Annual taxable-account long-term gain realization rate. Unrealized appreciation remains deferred until withdrawals.',

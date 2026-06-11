@@ -24,6 +24,11 @@ const TYPE_LABELS: Record<AccountType, string> = {
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString();
+const defaultGrowthForType = (inputs: InputParams, type: AccountType): number => {
+  if (type === 'taxable') return inputs.taxableReturn;
+  if (type === 'hsa') return inputs.hsaReturn;
+  return inputs.r;
+};
 
 const inputStyle: React.CSSProperties = {
   padding: '5px 7px', fontSize: '12px', border: '1px solid var(--border-strong)',
@@ -60,6 +65,7 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
   const accounts = inputs.accounts ?? [];
   const hasAccounts = accounts.length > 0;
   const [subTab, setSubTab] = useState<'basic' | 'advanced'>(() => hasAccounts ? 'advanced' : 'basic');
+  const [growthDrafts, setGrowthDrafts] = useState<Record<string, string>>({});
 
   const investmentAccounts = accounts.filter(a => INVESTMENT_TYPES.includes(a.type));
   const guaranteedAccounts = accounts.filter(a => GUARANTEED_TYPES.includes(a.type));
@@ -74,6 +80,7 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
     name: 'New Account',
     type: 'traditional' as AccountType,
     balance: 0,
+    growthRate: inputs.r,
   }]);
 
   const addGuaranteed = () => onAccountsChange([...accounts, {
@@ -85,6 +92,23 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
     incomeStartAge: inputs.retireAge,
     inflationAdjusted: false,
   }]);
+  const formatGrowthRate = (acct: Account) =>
+    acct.growthRate !== undefined ? (acct.growthRate * 100).toFixed(1) : '';
+  const updateGrowthRate = (acct: Account, raw: string) => {
+    setGrowthDrafts(prev => ({ ...prev, [acct.id]: raw }));
+    if (raw === '') {
+      update(acct.id, { growthRate: undefined });
+      return;
+    }
+    const value = Number(raw);
+    if (Number.isFinite(value)) update(acct.id, { growthRate: value / 100 });
+  };
+  const finishGrowthEdit = (acct: Account) => {
+    setGrowthDrafts(prev => {
+      const { [acct.id]: _discard, ...rest } = prev;
+      return rest;
+    });
+  };
 
   // Summary totals from accounts
   const tradTotal = investmentAccounts.filter(a => a.type === 'traditional').reduce((s, a) => s + a.balance, 0);
@@ -244,6 +268,7 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
                 <th>Type</th>
                 <th>Balance ($)</th>
                 <th>Annual Contrib ($)</th>
+                <th>Growth (%)</th>
                 <th>Employer Match / Cost Basis</th>
                 <th></th>
               </tr>
@@ -255,7 +280,14 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
                     <input style={inputStyle} value={acct.name} onChange={e => update(acct.id, { name: e.target.value })} />
                   </td>
                   <td>
-                    <select style={inputStyle} value={acct.type} onChange={e => update(acct.id, { type: e.target.value as AccountType })}>
+                    <select
+                      style={inputStyle}
+                      value={acct.type}
+                      onChange={e => {
+                        const nextType = e.target.value as AccountType;
+                        update(acct.id, { type: nextType });
+                      }}
+                    >
                       {INVESTMENT_TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
                     </select>
                   </td>
@@ -266,6 +298,20 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
                   <td>
                     <input style={inputStyle} type="number" value={acct.annualContrib || ''} step={500} placeholder="0"
                       onChange={e => update(acct.id, { annualContrib: Number(e.target.value) || 0 })} />
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <TipLabel text="Nominal annual growth (%)" />
+                      <input
+                        style={inputStyle}
+                        type="number"
+                        value={growthDrafts[acct.id] ?? formatGrowthRate(acct)}
+                        step={0.25}
+                        placeholder={`${(defaultGrowthForType(inputs, acct.type) * 100).toFixed(1)}%`}
+                        onChange={e => updateGrowthRate(acct, e.target.value)}
+                        onBlur={() => finishGrowthEdit(acct)}
+                      />
+                    </div>
                   </td>
                   <td>
                     {acct.type === 'taxable' ? (
@@ -433,9 +479,10 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
       </div>
 
       {/* Assumptions — always visible, independent of sub-tab */}
-      <div style={{ display: 'flex', gap: '1.5rem', padding: '10px 14px', background: '#F8F9FA', border: '1px solid #E8E8E8', borderRadius: '6px', marginBottom: '1.2rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1.5rem', padding: '10px 14px', background: '#F8F9FA', border: '1px solid #E8E8E8', borderRadius: '6px', marginBottom: '1.2rem' }}>
         {rateSlider('Annual return (%)', 'r', inputs.r, 1, 12, 0.5, 1)}
         {rateSlider('Taxable account return (%)', 'taxableReturn', inputs.taxableReturn, 1, 12, 0.5, 1)}
+        {rateSlider('HSA return (%)', 'hsaReturn', inputs.hsaReturn, 1, 12, 0.5, 1)}
         {rateSlider('Inflation (%)', 'inf', inputs.inf, 1, 6, 0.5, 1)}
       </div>
       <div style={{ display: 'flex', gap: '1.5rem', padding: '10px 14px', background: '#F8F9FA', border: '1px solid #E8E8E8', borderRadius: '6px', marginBottom: '1.2rem' }}>
@@ -444,7 +491,7 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
         {rateSlider('Realized LTCG yield (%)', 'taxableRealizedGainYield', inputs.taxableRealizedGainYield ?? 0, 0, 8, 0.25, 2)}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.6rem', marginBottom: '1rem' }}>
         <div className="chart-title" style={{ margin: 0 }}>Accounts</div>
         <div style={{ display: 'flex', gap: '4px' }}>
           <button style={subTabBtn(subTab === 'basic')} onClick={() => setSubTab('basic')}>Basic</button>
