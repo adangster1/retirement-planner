@@ -1,4 +1,4 @@
-import type { InputParams, ProjectionOptions, ProjectionRow } from './types';
+import type { AccountType, InputParams, ProjectionOptions, ProjectionRow } from './types';
 
 // IRS Uniform Lifetime Table (RMD divisors by age, SECURE 2.0)
 const RMD_FACTORS: Record<number, number> = {
@@ -462,21 +462,93 @@ export function runProjection(
   let taxable = params.taxableBal;
   let hsa = params.hsaBal;
   let basis = params.taxableBasis ?? params.taxableBal; // full basis = no embedded gains by default
+  type InvestmentAccountType = Extract<AccountType, 'traditional' | 'roth' | 'taxable' | 'hsa'>;
+  type InvestmentBucket = {
+    id: string;
+    type: InvestmentAccountType;
+    balance: number;
+    annualContrib: number;
+    growthRate?: number;
+    employerMatch?: number;
+    matchLimit?: number;
+  };
+  const investmentTypes: InvestmentAccountType[] = ['traditional', 'roth', 'taxable', 'hsa'];
+  const accountBuckets: InvestmentBucket[] = (params.accounts ?? [])
+    .filter((a): a is typeof a & { type: InvestmentAccountType } => investmentTypes.includes(a.type as InvestmentAccountType))
+    .map(a => ({
+      id: a.id,
+      type: a.type,
+      balance: a.balance,
+      annualContrib: a.annualContrib ?? 0,
+      growthRate: a.growthRate,
+      employerMatch: a.employerMatch,
+      matchLimit: a.matchLimit,
+    }));
+  const hasInvestmentAccounts = accountBuckets.length > 0;
+  const defaultGrowthForType = (
+    type: InvestmentAccountType,
+    scenario: { portfolioReturn: number; taxableReturn: number; hsaReturn: number },
+  ) => {
+    if (type === 'taxable') return scenario.taxableReturn;
+    if (type === 'hsa') return scenario.hsaReturn;
+    return scenario.portfolioReturn;
+  };
+  const syncTotalsFromBuckets = () => {
+    if (!hasInvestmentAccounts) return;
+    trad = accountBuckets.filter(a => a.type === 'traditional').reduce((s, a) => s + a.balance, 0);
+    roth = accountBuckets.filter(a => a.type === 'roth').reduce((s, a) => s + a.balance, 0);
+    taxable = accountBuckets.filter(a => a.type === 'taxable').reduce((s, a) => s + a.balance, 0);
+    hsa = accountBuckets.filter(a => a.type === 'hsa').reduce((s, a) => s + a.balance, 0);
+  };
+  const syncBucketsToTotal = (
+    type: InvestmentAccountType,
+    total: number,
+    scenario: { portfolioReturn: number; taxableReturn: number; hsaReturn: number },
+  ) => {
+    if (!hasInvestmentAccounts) return;
+    const buckets = accountBuckets.filter(a => a.type === type);
+    if (buckets.length === 0) {
+      if (total > 0) {
+        accountBuckets.push({
+          id: `synthetic-${type}`,
+          type,
+          balance: total,
+          annualContrib: 0,
+          growthRate: defaultGrowthForType(type, scenario),
+        });
+      }
+      return;
+    }
+    const current = buckets.reduce((s, a) => s + a.balance, 0);
+    if (total <= 0) {
+      buckets.forEach(a => { a.balance = 0; });
+      return;
+    }
+    if (current <= 0) {
+      buckets[0].balance = total;
+      buckets.slice(1).forEach(a => { a.balance = 0; });
+      return;
+    }
+    buckets.forEach(a => {
+      a.balance = total * (a.balance / current);
+    });
+  };
+  const syncAllBucketsToTotals = (
+    scenario: { portfolioReturn: number; taxableReturn: number; hsaReturn: number },
+  ) => {
+    syncBucketsToTotal('traditional', trad, scenario);
+    syncBucketsToTotal('roth', roth, scenario);
+    syncBucketsToTotal('taxable', taxable, scenario);
+    syncBucketsToTotal('hsa', hsa, scenario);
+  };
 
   // When accounts are defined, they override the flat sidebar balance/contribution fields
-  if (params.accounts && params.accounts.length > 0) {
-    const tradAccts = params.accounts.filter(a => a.type === 'traditional');
-    const rothAccts = params.accounts.filter(a => a.type === 'roth');
-    const taxAccts  = params.accounts.filter(a => a.type === 'taxable');
-    const hsaAccts  = params.accounts.filter(a => a.type === 'hsa');
-    if (tradAccts.length + rothAccts.length + taxAccts.length + hsaAccts.length > 0) {
-      trad    = tradAccts.reduce((s, a) => s + a.balance, 0);
-      roth    = rothAccts.reduce((s, a) => s + a.balance, 0);
-      rothBasis = roth;
-      taxable = taxAccts.reduce((s, a) => s + a.balance, 0);
-      basis   = taxAccts.reduce((s, a) => s + (a.costBasis ?? a.balance), 0);
-      hsa     = hsaAccts.reduce((s, a) => s + a.balance, 0);
-    }
+  if (hasInvestmentAccounts) {
+    syncTotalsFromBuckets();
+    rothBasis = roth;
+    basis = (params.accounts ?? [])
+      .filter(a => a.type === 'taxable')
+      .reduce((s, a) => s + (a.costBasis ?? a.balance), 0);
   }
 
   const retireIn = Math.max(1, params.retireAge - params.age);
@@ -601,10 +673,17 @@ export function runProjection(
     const priorYearEndTrad = trad;
 
     // Apply returns
-    trad *= (1 + portfolioReturn);
-    roth *= (1 + portfolioReturn);
-    taxable *= (1 + taxableReturn);
-    hsa *= (1 + hsaReturn);
+    if (hasInvestmentAccounts) {
+      for (const bucket of accountBuckets) {
+        bucket.balance *= (1 + (bucket.growthRate ?? defaultGrowthForType(bucket.type, scenario)));
+      }
+      syncTotalsFromBuckets();
+    } else {
+      trad *= (1 + portfolioReturn);
+      roth *= (1 + portfolioReturn);
+      taxable *= (1 + taxableReturn);
+      hsa *= (1 + hsaReturn);
+    }
     if (taxable > 0) {
       investmentOrdinaryIncome = Math.round(taxable * (params.taxableOrdinaryYield ?? 0));
       qualifiedDividends = Math.round(taxable * (params.taxableQualifiedDividendYield ?? 0));
@@ -624,20 +703,29 @@ export function runProjection(
       // Accumulation phase
       let tradContribAmt: number, rothContribAmt: number;
       let taxableContribAmt: number, hsaContribAmt: number, employerMatchAmt: number;
-      if (params.accounts && params.accounts.length > 0) {
-        tradContribAmt    = params.accounts.filter(a => a.type === 'traditional').reduce((s, a) => s + (a.annualContrib ?? 0), 0);
-        rothContribAmt    = params.accounts.filter(a => a.type === 'roth').reduce((s, a) => s + (a.annualContrib ?? 0), 0);
-        taxableContribAmt = params.accounts.filter(a => a.type === 'taxable').reduce((s, a) => s + (a.annualContrib ?? 0), 0);
-        hsaContribAmt     = params.accounts.filter(a => a.type === 'hsa').reduce((s, a) => s + (a.annualContrib ?? 0), 0);
-        // Employer match: sum across traditional accounts
+      if (hasInvestmentAccounts) {
         const salary = params.salary ?? 0;
-        employerMatchAmt = params.accounts
-          .filter(a => a.type === 'traditional' && a.employerMatch && a.annualContrib)
-          .reduce((s, a) => {
-            const matchOnContrib = (a.annualContrib ?? 0) * (a.employerMatch ?? 0);
-            const salaryCap = a.matchLimit ? (a.matchLimit / 100) * salary : matchOnContrib;
-            return s + Math.min(matchOnContrib, salaryCap > 0 ? salaryCap : matchOnContrib);
-          }, 0);
+        tradContribAmt = 0;
+        rothContribAmt = 0;
+        taxableContribAmt = 0;
+        hsaContribAmt = 0;
+        employerMatchAmt = 0;
+        for (const bucket of accountBuckets) {
+          const contribution = bucket.annualContrib;
+          if (bucket.type === 'traditional') tradContribAmt += contribution;
+          if (bucket.type === 'roth') rothContribAmt += contribution;
+          if (bucket.type === 'taxable') taxableContribAmt += contribution;
+          if (bucket.type === 'hsa') hsaContribAmt += contribution;
+          bucket.balance += contribution;
+          if (bucket.type === 'traditional' && bucket.employerMatch && contribution) {
+            const matchOnContrib = contribution * bucket.employerMatch;
+            const salaryCap = bucket.matchLimit ? (bucket.matchLimit / 100) * salary : matchOnContrib;
+            const match = Math.min(matchOnContrib, salaryCap > 0 ? salaryCap : matchOnContrib);
+            employerMatchAmt += match;
+            bucket.balance += Math.round(match);
+          }
+        }
+        syncTotalsFromBuckets();
       } else {
         const requestedTrad = params.tradContrib * 12;
         const requestedRoth = params.rothContrib * 12;
@@ -654,12 +742,14 @@ export function runProjection(
         const matchLimit  = (params.matchLimit / 100) * tradContribAmt;
         employerMatchAmt  = Math.min(matchLimit, tradContribAmt * matchPct);
       }
-      trad    += tradContribAmt + (y > 0 ? Math.round(employerMatchAmt) : 0);
-      roth    += rothContribAmt;
+      if (!hasInvestmentAccounts) {
+        trad    += tradContribAmt + (y > 0 ? Math.round(employerMatchAmt) : 0);
+        roth    += rothContribAmt;
+        taxable += taxableContribAmt;
+        hsa     += hsaContribAmt;
+      }
       rothBasis += rothContribAmt;
-      taxable += taxableContribAmt;
-      basis   += taxableContribAmt;
-      hsa     += hsaContribAmt;
+      basis += taxableContribAmt;
 
       const annualSalary = params.salary ?? 0;
 
@@ -673,6 +763,7 @@ export function runProjection(
         stateTax = estimateStateTax(annualSalary + investmentOrdinaryIncome + qualifiedDividends + ltcgAmount, params);
         const investmentTaxDrag = Math.max(0, federalTax + stateTax - salaryFed - salaryState);
         taxable = Math.max(0, taxable - investmentTaxDrag);
+        syncBucketsToTotal('taxable', taxable, scenario);
       }
 
       // Pre-retirement Roth conversions
@@ -689,21 +780,22 @@ export function runProjection(
         conv = Math.max(0, Math.floor(maxConv));
       }
       if (conv > 0) {
-          // Incremental conversion tax on top of salary (this portion is paid from taxable account)
-          const ordinaryWithConv = annualSalary + investmentOrdinaryIncome + conv;
-          const ordinaryTaxableWithConv = Math.max(0, ordinaryWithConv - (STD_DEDUCTION[filingStatusForYear] + num65 * ADDITIONAL_STD_65[filingStatusForYear]) * inflFactor);
-          const taxWithConv = estimateTax(ordinaryWithConv, filingStatusForYear, num65, inflFactor)
-            + estimateLtcgTax(qualifiedDividends + ltcgAmount, ordinaryTaxableWithConv, filingStatusForYear, inflFactor);
-          const convFed = Math.max(0, taxWithConv - federalTax);
-          federalTax = taxWithConv; // full tax: salary + conversion
-          convTaxCalc = convFed;
-          const stateWithConv = estimateStateTax(annualSalary + conv, params);
-          convTaxCalc += Math.max(0, stateWithConv - stateTax);
-          stateTax = stateWithConv;
-          trad -= conv;
-          roth += conv;
-          rothBasis += conv;
-          taxable = Math.max(0, taxable - convTaxCalc); // only conversion taxes drawn from taxable account
+        // Incremental conversion tax on top of salary (this portion is paid from taxable account)
+        const ordinaryWithConv = annualSalary + investmentOrdinaryIncome + conv;
+        const ordinaryTaxableWithConv = Math.max(0, ordinaryWithConv - (STD_DEDUCTION[filingStatusForYear] + num65 * ADDITIONAL_STD_65[filingStatusForYear]) * inflFactor);
+        const taxWithConv = estimateTax(ordinaryWithConv, filingStatusForYear, num65, inflFactor)
+          + estimateLtcgTax(qualifiedDividends + ltcgAmount, ordinaryTaxableWithConv, filingStatusForYear, inflFactor);
+        const convFed = Math.max(0, taxWithConv - federalTax);
+        federalTax = taxWithConv; // full tax: salary + conversion
+        convTaxCalc = convFed;
+        const stateWithConv = estimateStateTax(annualSalary + conv, params);
+        convTaxCalc += Math.max(0, stateWithConv - stateTax);
+        stateTax = stateWithConv;
+        trad -= conv;
+        roth += conv;
+        rothBasis += conv;
+        taxable = Math.max(0, taxable - convTaxCalc); // only conversion taxes drawn from taxable account
+        syncAllBucketsToTotals(scenario);
       }
 
       magi2YearsAgo = magi1YearAgo;
@@ -722,6 +814,7 @@ export function runProjection(
             if (item.atAge === age) {
               const annual = Math.round(item.monthly * expenseInflationFactor);
               taxable = Math.max(0, taxable - annual);
+              syncBucketsToTotal('taxable', taxable, scenario);
               yearExpense += annual;
             }
           } else {
@@ -961,6 +1054,7 @@ export function runProjection(
       if (taxable > 0) basis = Math.round(basis * Math.max(0, taxable - taxableW) / taxable);
       taxable = Math.max(0, taxable - taxableW);
       hsa = Math.max(0, hsa - hsaW);
+      syncAllBucketsToTotals(scenario);
     }
 
     const portfolioValue = trad + roth + taxable + hsa;

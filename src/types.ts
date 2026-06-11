@@ -98,6 +98,7 @@ export interface Account {
   balance: number;
   costBasis?: number;        // taxable accounts only
   annualContrib?: number;    // pre-retirement annual contribution
+  growthRate?: number;       // nominal annual growth rate; defaults by account type
   employerMatch?: number;    // decimal e.g. 0.04 = 4% match rate
   matchLimit?: number;       // % of salary ceiling e.g. 6 = 6% of salary
   // Guaranteed income fields (annuity, pension, bond_tips)

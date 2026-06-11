@@ -118,6 +118,84 @@ describe('runProjection', () => {
     expect(rows.find(r => r.age === 57)?.trad).toBe(99000);
   });
 
+  it('uses basic return defaults for advanced accounts without per-account growth rates', () => {
+    const params: InputParams = {
+      ...BASE,
+      age: 55,
+      retireAge: 58,
+      lifeExp: 56,
+      tradBal: 999999,
+      rothBal: 999999,
+      taxableBal: 999999,
+      hsaBal: 999999,
+      tradContrib: 0,
+      rothContrib: 0,
+      taxableContrib: 0,
+      hsaContrib: 0,
+      employerMatch: 0,
+      salary: 0,
+      ss: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      r: 0.05,
+      taxableReturn: 0.02,
+      taxableQualifiedDividendYield: 0,
+      hsaReturn: 0.01,
+      accounts: [
+        { id: 'trad', name: 'Traditional', type: 'traditional', balance: 100000 },
+        { id: 'roth', name: 'Roth', type: 'roth', balance: 100000 },
+        { id: 'taxable', name: 'Taxable', type: 'taxable', balance: 100000 },
+        { id: 'hsa', name: 'HSA', type: 'hsa', balance: 100000 },
+      ],
+    };
+
+    const row = runProjection(params, params.r).find(r => r.age === 56)!;
+
+    expect(row.trad).toBe(105000);
+    expect(row.roth).toBe(105000);
+    expect(row.taxable).toBe(102000);
+    expect(row.hsa).toBe(101000);
+  });
+
+  it('compounds advanced accounts with their own growth rates', () => {
+    const params: InputParams = {
+      ...BASE,
+      age: 55,
+      retireAge: 58,
+      lifeExp: 57,
+      tradBal: 0,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      tradContrib: 0,
+      rothContrib: 0,
+      taxableContrib: 0,
+      hsaContrib: 0,
+      employerMatch: 0,
+      salary: 0,
+      ss: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      r: 0.05,
+      accounts: [
+        { id: 'trad-flat', name: 'Traditional flat', type: 'traditional', balance: 100000, growthRate: 0 },
+        { id: 'trad-growth', name: 'Traditional growth', type: 'traditional', balance: 100000, growthRate: 0.10 },
+        { id: 'roth-growth', name: 'Roth growth', type: 'roth', balance: 100000, growthRate: 0.08 },
+      ],
+    };
+
+    const rows = runProjection(params, params.r);
+
+    expect(rows.find(r => r.age === 56)?.trad).toBe(210000);
+    expect(rows.find(r => r.age === 57)?.trad).toBe(221000);
+    expect(rows.find(r => r.age === 56)?.roth).toBe(108000);
+    expect(rows.find(r => r.age === 57)?.roth).toBe(116640);
+  });
+
   it('builds Monte Carlo paths with separate annual return draws', () => {
     const path = buildScenarioPath(BASE, { seed: 'path-test' });
 
