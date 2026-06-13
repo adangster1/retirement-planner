@@ -76,6 +76,11 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
       });
     };
 
+    const handleRangeChange = (e: React.FormEvent<HTMLInputElement>) => {
+      finishDraft();
+      update(e.currentTarget.value);
+    };
+
     return (
       <div className="range-row">
         <input
@@ -84,10 +89,8 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
           max={max}
           value={value}
           step={step}
-          onInput={(e) => {
-            finishDraft();
-            update((e.target as HTMLInputElement).value);
-          }}
+          onInput={handleRangeChange}
+          onChange={handleRangeChange}
         />
         <div className="range-number-wrap">
           <input

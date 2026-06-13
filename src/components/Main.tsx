@@ -261,6 +261,22 @@ const Main: React.FC<MainProps> = ({
   const handleTaxRateChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
     onInputChange(field, Number((e.target as HTMLInputElement).value) / 100);
   };
+  const handleQcdStartAgeRangeChange = (e: React.FormEvent<HTMLInputElement>) => {
+    finishNumberDraft('qcdStartAge');
+    handleRmdRangeChange('qcdStartAge', e);
+  };
+  const handleStateLocalTaxRangeChange = (e: React.FormEvent<HTMLInputElement>) => {
+    finishNumberDraft('stateLocalTaxRate');
+    handleTaxRateChange('stateLocalTaxRate', e);
+  };
+  const handleStateTaxRangeChange = (e: React.FormEvent<HTMLInputElement>) => {
+    finishNumberDraft('stateTaxRate');
+    handleTaxRateChange('stateTaxRate', e);
+  };
+  const handleOptMinStartAgeRangeChange = (e: React.FormEvent<HTMLInputElement>) => {
+    finishNumberDraft('optMinStartAge');
+    setOptMinStartAge(Number(e.currentTarget.value));
+  };
   const updatePercentDraft = (key: keyof InputParams, raw: string) => {
     setNumberDrafts(prev => ({ ...prev, [key]: raw }));
     if (raw === '' || raw === '-' || raw === '.' || raw === '-.') return;
@@ -959,10 +975,8 @@ const Main: React.FC<MainProps> = ({
                           max={100}
                           value={inputs.qcdStartAge}
                           step={1}
-                          onInput={(e) => {
-                            finishNumberDraft('qcdStartAge');
-                            handleRmdRangeChange('qcdStartAge', e);
-                          }}
+                          onInput={handleQcdStartAgeRangeChange}
+                          onChange={handleQcdStartAgeRangeChange}
                         />
                         <div className="range-number-wrap">
                           <input
@@ -1184,10 +1198,8 @@ const Main: React.FC<MainProps> = ({
                         max={5}
                         value={(inputs.stateLocalTaxRate ?? 0) * 100}
                         step={0.25}
-                        onInput={(e) => {
-                          finishNumberDraft('stateLocalTaxRate');
-                          handleTaxRateChange('stateLocalTaxRate', e);
-                        }}
+                        onInput={handleStateLocalTaxRangeChange}
+                        onChange={handleStateLocalTaxRangeChange}
                       />
                       <div className="range-number-wrap">
                         <input
@@ -1216,10 +1228,8 @@ const Main: React.FC<MainProps> = ({
                             max={13}
                             value={inputs.stateTaxRate * 100}
                             step={0.25}
-                            onInput={(e) => {
-                              finishNumberDraft('stateTaxRate');
-                              handleTaxRateChange('stateTaxRate', e);
-                            }}
+                            onInput={handleStateTaxRangeChange}
+                            onChange={handleStateTaxRangeChange}
                           />
                           <div className="range-number-wrap">
                             <input
@@ -1489,10 +1499,8 @@ const Main: React.FC<MainProps> = ({
                     value={optMinStartAge}
                     step={1}
                     style={{ flex: 1, maxWidth: '220px' }}
-                    onChange={e => {
-                      finishNumberDraft('optMinStartAge');
-                      setOptMinStartAge(Number(e.target.value));
-                    }}
+                    onInput={handleOptMinStartAgeRangeChange}
+                    onChange={handleOptMinStartAgeRangeChange}
                   />
                   <div className="range-number-wrap" style={{ maxWidth: 82 }}>
                     <input
