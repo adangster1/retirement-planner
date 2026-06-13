@@ -154,6 +154,14 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
       return rest;
     });
   };
+  const handleExpenseInflationRangeChange = (e: React.FormEvent<HTMLInputElement>) => {
+    finishBasicDraft('expenseInflationRate');
+    onInputChange('expenseInflationRate', Number(e.currentTarget.value) / 100);
+  };
+  const handleHealthcareInflationRangeChange = (e: React.FormEvent<HTMLInputElement>) => {
+    finishBasicDraft('healthcareInflationRate');
+    onInputChange('healthcareInflationRate', Number(e.currentTarget.value) / 100);
+  };
 
   const renderBasic = () => {
     const disabled = hasScheduledItems;
@@ -282,10 +290,8 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
               </div>
             </div>
             <input type="range" min={1} max={6} value={inputs.expenseInflationRate * 100} step={0.25} style={{ width: '100%' }}
-              onInput={(e) => {
-                finishBasicDraft('expenseInflationRate');
-                onInputChange('expenseInflationRate', Number((e.target as HTMLInputElement).value) / 100);
-              }} />
+              onInput={handleExpenseInflationRangeChange}
+              onChange={handleExpenseInflationRangeChange} />
           </div>
           <div className="field">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
@@ -306,10 +312,8 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
               </div>
             </div>
             <input type="range" min={2} max={10} value={inputs.healthcareInflationRate * 100} step={0.5} style={{ width: '100%' }}
-              onInput={(e) => {
-                finishBasicDraft('healthcareInflationRate');
-                onInputChange('healthcareInflationRate', Number((e.target as HTMLInputElement).value) / 100);
-              }} />
+              onInput={handleHealthcareInflationRangeChange}
+              onChange={handleHealthcareInflationRangeChange} />
           </div>
         </div>
         <div className="detail-section-title" style={{ marginTop: '1.4rem' }}>One-Time Expenses</div>

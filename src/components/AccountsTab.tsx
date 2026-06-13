@@ -455,39 +455,44 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
     max: number,
     step: number,
     decimals: number,
-  ) => (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
-        <TipLabel text={tipText} />
-        <div className="range-number-wrap" style={{ maxWidth: 96 }}>
-          <input
-            className="range-number"
-            type="number"
-            min={min}
-            max={max}
-            step={step}
-            value={rateDrafts[field] ?? String(Number((value * 100).toFixed(decimals)))}
-            onInput={(e) => updateRateDraft(field, (e.target as HTMLInputElement).value)}
-            onBlur={() => finishRateDraft(field)}
-            aria-label={`${tipText} value`}
-          />
-          <span className="range-number-suffix">%</span>
+  ) => {
+    const handleRangeChange = (e: React.FormEvent<HTMLInputElement>) => {
+      finishRateDraft(field);
+      onInputChange(field, Number(e.currentTarget.value) / 100);
+    };
+
+    return (
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+          <TipLabel text={tipText} />
+          <div className="range-number-wrap" style={{ maxWidth: 96 }}>
+            <input
+              className="range-number"
+              type="number"
+              min={min}
+              max={max}
+              step={step}
+              value={rateDrafts[field] ?? String(Number((value * 100).toFixed(decimals)))}
+              onInput={(e) => updateRateDraft(field, (e.target as HTMLInputElement).value)}
+              onBlur={() => finishRateDraft(field)}
+              aria-label={`${tipText} value`}
+            />
+            <span className="range-number-suffix">%</span>
+          </div>
         </div>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={value * 100}
+          step={step}
+          style={{ width: '100%' }}
+          onInput={handleRangeChange}
+          onChange={handleRangeChange}
+        />
       </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value * 100}
-        step={step}
-        style={{ width: '100%' }}
-        onInput={(e) => {
-          finishRateDraft(field);
-          onInputChange(field, Number((e.target as HTMLInputElement).value) / 100);
-        }}
-      />
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="chart-card">
