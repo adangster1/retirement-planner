@@ -5,6 +5,7 @@ import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } fr
 import { runOptimizer } from './optimizer';
 import type { OptimizationOutput } from './optimizer';
 import { exportToSpreadsheet } from './exportSpreadsheet';
+import { APP_VERSION, CHANGELOG } from './changelog';
 import Main from './components/Main';
 
 const PLANS_KEY = 'retirement-planner-plans-v2';
@@ -303,6 +304,7 @@ const App: React.FC = () => {
   const [planMenuOpen, setPlanMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [dollarMode, setDollarMode] = useState<DollarMode>('nominal');
+  const [changelogOpen, setChangelogOpen] = useState(false);
   const [metrics, setMetrics] = useState<{ m1: string; m2: string; m3: string; m4: string; m5: string }>({
     m1: '—', m2: '—', m3: '—', m4: '—', m5: '—',
   });
@@ -676,8 +678,43 @@ const App: React.FC = () => {
             ))}
           </div>
         ))}
-        <div className="privacy-note">100% local. Your numbers never leave the browser.</div>
+        <div className="nav-footer">
+          <button className="changelog-trigger" type="button" onClick={() => setChangelogOpen(true)}>
+            <span>What&apos;s new</span>
+            <span>v{APP_VERSION}</span>
+          </button>
+          <div className="privacy-note">100% local. Your numbers never leave the browser.</div>
+        </div>
       </nav>
+      {changelogOpen && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setChangelogOpen(false);
+          }}
+        >
+          <div className="changelog-modal" role="dialog" aria-modal="true" aria-labelledby="changelog-title">
+            <div className="modal-header">
+              <div>
+                <div className="modal-kicker">Version {APP_VERSION}</div>
+                <div className="modal-title" id="changelog-title">What&apos;s new</div>
+              </div>
+              <button className="modal-close" type="button" onClick={() => setChangelogOpen(false)} aria-label="Close changelog">X</button>
+            </div>
+            <div className="changelog-list">
+              {CHANGELOG.map(entry => (
+                <div className="changelog-entry" key={entry.hash}>
+                  <div className="changelog-entry-title">{entry.title}</div>
+                  <div className="changelog-entry-meta">
+                    {entry.date} · {entry.hash}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       <Main
         inputs={inputs}
         activeTab={activeTab}
