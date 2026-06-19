@@ -8,6 +8,8 @@ The app projects year by year from the current age through the modeled household
 
 The model is deterministic unless Monte Carlo is used. Deterministic results use the configured return and inflation assumptions.
 
+For married plans, the primary user's age remains the row age shown in projection tables. Spouse age advances in parallel based on the entered spouse age. If a separate spouse retirement age is entered, the model converts that spouse age into the corresponding projection year.
+
 ## Inflation
 
 Inflation affects future spending, tax bracket extrapolation, and some modeled values. A single long-term inflation assumption cannot represent every real-world category. Healthcare, housing, insurance, and taxes may inflate differently.
@@ -24,6 +26,10 @@ The model tracks:
 Traditional withdrawals and Roth conversions are generally taxable as ordinary income. Roth withdrawals are modeled as tax-free. Taxable accounts can generate ordinary yield, qualified dividends, and long-term capital gains depending on settings.
 
 Advanced account entries can be assigned to you, your spouse, or jointly. Investment balances are still modeled as household assets for withdrawal purposes. Guaranteed income sources use ownership directly: start and end ages are interpreted as the owner's age, owner-specific income stops when that owner dies, and survivor pension/annuity benefits continue only when a survivor benefit is configured.
+
+Basic account inputs are household-level totals by account type. They do not distinguish which spouse owns the balance or contribution. Advanced account inputs should be used when account ownership, owner-specific contributions, per-account returns, or guaranteed income timing matter.
+
+Advanced investment-account contributions stop based on account owner: your accounts stop at your retirement age, spouse-owned accounts stop at spouse retirement age, and joint accounts stop at the household retirement year. If no spouse retirement age is set, existing-plan behavior is preserved and the primary retirement year is used as the household cutoff.
 
 ## Withdrawal Order
 
@@ -44,6 +50,20 @@ RMDs follow the app's implementation of SECURE 2.0 style age rules and use prior
 The app estimates Social Security based on entered claiming-age estimates and claiming age. It also models taxable Social Security using provisional income concepts.
 
 Social Security law and benefit estimates can change. Use SSA.gov estimates where possible.
+
+## Wages and Retirement Ages
+
+The model supports separate primary and spouse wages for married plans. Primary wages continue until the primary retirement age. Spouse wages continue until spouse retirement age when provided. When spouse retirement age is not provided, spouse wages follow the primary retirement year for backward compatibility with older saved plans.
+
+Basic account contributions use active household wages for contribution-cap and employer-match calculations. Advanced account contributions use the wage stream associated with the account owner.
+
+The spending-smile retirement phase and household retirement summaries use the later modeled household retirement year when spouse retirement age is provided.
+
+## Basic vs Advanced Expenses
+
+Basic expense inputs are household-level monthly spending categories. They do not assign costs to a spouse or model different start/end ages beyond the built-in spending-smile and long-term-care assumptions.
+
+Advanced expense items should be used when spending has specific timing, such as recurring bills, loans, one-time events, custom start or end ages, or different inflation treatment by category.
 
 ## Federal Taxes
 

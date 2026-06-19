@@ -12,8 +12,9 @@ A client-side retirement planning tool built with React and TypeScript. All calc
 - **Social Security estimator** — enter SSA.gov estimates at 62/67/70; slider interpolates using the actual SSA piecewise reduction formula with COLA applied annually after claim age
 - **Tax analysis** — 2026 federal brackets extrapolated forward by inflation, correct SS provisional income formula, IRMAA surcharges, 65+ standard deduction, optional flat or bracketed state tax
 - **Monte Carlo simulation** — 1,000 full projection reruns with randomized return assumptions, showing success rate
-- **Expense modeling** — basic monthly categories (base, healthcare, discretionary, LTC reserve) or advanced itemized expense editor with recurring, loan, and one-time entries
-- **Account modeling** — basic balance/contribution fields or advanced account editor for granular investment accounts with custom returns and guaranteed income streams
+- **Married household modeling** — separate spouse age, retirement age, wages, Social Security, and life expectancy inputs
+- **Expense modeling** — Basic combined household monthly categories or Advanced itemized expense editor with recurring, loan, one-time, and custom-timing entries
+- **Account modeling** — Basic combined balance/contribution fields or Advanced account editor for ownership, per-account returns, owner-specific contributions, and guaranteed income streams
 - **Export** — JSON plan file or Excel spreadsheet with year-by-year projection data
 
 ## Sample Data
@@ -32,8 +33,8 @@ Detailed user documentation is drafted in [`docs/wiki`](docs/wiki/) so it can be
 
 | Tab | Category | Description |
 |-----|----------|-------------|
-| Accounts | Setup | Balances, contributions, salary, return assumptions |
-| Expenses | Setup | Spending categories and itemized expense editor |
+| Accounts | Setup | Basic household totals or Advanced owner-specific accounts, contributions, salaries, and return assumptions |
+| Expenses | Setup | Basic household spending categories or Advanced itemized expense editor |
 | Balances | Results | Portfolio balance by account type over time |
 | Income | Results | Income sources: SS, withdrawals, conversions |
 | RMDs & Conversions | Results | Required minimum distributions and Roth conversion amounts |
@@ -106,6 +107,8 @@ src/
 
 - Federal tax brackets, standard deductions, IRMAA tiers, and contribution limits use 2026 values, extrapolated forward where modeled by the app's inflation rate
 - RMDs follow SECURE 2.0 rules using prior year-end balance; optional QCDs and an estimated joint-life adjustment are supported
+- Basic Accounts and Expenses model combined household values; use Advanced views when ownership, start/end ages, or item-level timing matter
+- Married plans can model separate spouse retirement age and spouse wages; existing plans without those fields keep the primary retirement age behavior
 - Roth conversion taxes are modeled as paid from the taxable account
 - IRMAA surcharges based on MAGI from 2 years prior (approximated from current-year income)
 
