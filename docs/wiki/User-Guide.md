@@ -38,6 +38,8 @@ Use About You to enter the projection frame:
 
 Life expectancy controls how long the projection runs. If spouse information extends the household horizon beyond the primary user's life expectancy, the projection includes spouse-only survivor years.
 
+For married scenarios, spouse retirement age is separate from your retirement age. Spouse wages continue until spouse retirement age when spouse salary is entered. If spouse retirement age is left unset in older saved plans, the model keeps the previous behavior and uses your retirement year as the household retirement cutoff.
+
 ## Setup: Social Security
 
 Enter your Social Security estimates from SSA.gov when possible. The app supports estimates at common claiming ages and interpolates benefits when you change the claiming age.
@@ -64,7 +66,7 @@ Key concept: conversion taxes are modeled as paid from the taxable account. If t
 
 The Accounts tab supports both simple and advanced account modeling.
 
-Basic mode is useful when you want a quick projection:
+Basic mode is useful when you want a quick household-level projection. Basic balances and contributions are combined by account type, not assigned to either spouse:
 
 - Traditional retirement balance.
 - Roth balance.
@@ -72,8 +74,10 @@ Basic mode is useful when you want a quick projection:
 - HSA balance.
 - Contributions.
 - Return assumptions.
+- Your annual wages.
+- Spouse annual wages for married plans.
 
-Advanced mode is useful when you want more granular accounts, custom return assumptions, or guaranteed income streams. Investment accounts and guaranteed income sources can be marked as owned by you, your spouse, or jointly. Guaranteed income sources such as pensions can also define whether a survivor receives no benefit, a percentage benefit, or a fixed monthly benefit after the owner dies.
+Advanced mode is useful when you want more granular accounts, custom return assumptions, owner-specific contributions, or guaranteed income streams. Investment accounts and guaranteed income sources can be marked as owned by you, your spouse, or jointly. Owner-specific contributions stop at that owner's retirement age. Guaranteed income sources such as pensions can also define whether a survivor receives no benefit, a percentage benefit, or a fixed monthly benefit after the owner dies.
 
 Use realistic return assumptions. Small changes in long-term returns can dominate results over multi-decade projections.
 
@@ -81,7 +85,7 @@ Use realistic return assumptions. Small changes in long-term returns can dominat
 
 The Expenses tab supports basic spending categories and advanced itemized expenses.
 
-Basic mode is useful for high-level planning:
+Basic mode is useful for high-level planning. Basic expenses are combined household monthly spending, not person-specific expenses:
 
 - Base monthly spending.
 - Healthcare.
